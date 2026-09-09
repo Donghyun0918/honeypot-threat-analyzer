@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>위협 인텔리전스 콘솔 — T-Pot</title>
+    <link rel="stylesheet" href="/threat-console/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<header class="topbar">
+    <div class="brand">
+        <span class="logo-mark">●</span>
+        위협 인텔리전스 콘솔
+        <span class="subtitle">T-Pot 기반 ML/LLM 분석</span>
+    </div>
+    <nav class="tabs">
+        <button class="tab active" data-tab="overview">개요</button>
+        <button class="tab" data-tab="ml">ML 분류</button>
+        <button class="tab" data-tab="llm">LLM 분석</button>
+        <button class="tab" data-tab="train">모델 학습</button>
+        <button class="tab" data-tab="reports">리포트</button>
+    </nav>
+</header>
+
+<main>
+    <!-- 개요 탭 -->
+    <section id="tab-overview" class="tab-panel active">
+        <h2>최근 24시간 요약</h2>
+        <div class="card-grid">
+            <div class="stat-card">
+                <div class="stat-label">총 이벤트</div>
+                <div class="stat-value" id="stat-events">—</div>
+                <div class="stat-sub">honeypot 원본 로그</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">분류된 공격</div>
+                <div class="stat-value" id="stat-attacks">—</div>
+                <div class="stat-sub">ml_is_attack=true</div>
+            </div>
+            <div class="stat-card highlight">
+                <div class="stat-label">고위험 이벤트</div>
+                <div class="stat-value" id="stat-high">—</div>
+                <div class="stat-sub">MITRE 점수 ≥ 70</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">LLM 분석 완료</div>
+                <div class="stat-value" id="stat-llm">—</div>
+                <div class="stat-sub">한국어 요약 생성</div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="panel">
+                <h3>시간대별 공격 추이 (24h)</h3>
+                <canvas id="chart-timeline"></canvas>
+            </div>
+            <div class="panel">
+                <h3>위협 점수 분포</h3>
+                <canvas id="chart-score"></canvas>
+            </div>
+        </div>
+    </section>
+
+    <!-- ML 분류 탭 -->
+    <section id="tab-ml" class="tab-panel">
+        <h2>ML 기반 공격 유형 자동 분류</h2>
+        <p class="hint">
+            ml-classifier 사이드카가 logstash-* 이벤트를 5개 유형(Recon / Brute Force /
+            Malware / Intrusion / Etc)으로 분류하고 MITRE ATT&amp;CK 점수(0–100)를 부여합니다.
+        </p>
+        <div class="model-bar" id="model-bar">
+            <span class="muted">분류기 사용 비율 (최근 7일):</span>
+            <span id="model-pills" class="pills"></span>
+        </div>
+        <div class="row">
+            <div class="panel">
+                <h3>공격 유형 분포</h3>
+                <canvas id="chart-labels"></canvas>
+            </div>
+            <div class="panel">
+                <h3>허니팟별 공격 수</h3>
+                <canvas id="chart-honeypots"></canvas>
+            </div>
+        </div>
+        <div class="export-row">
+            <a id="ml-export-csv"  class="btn-link" download>ML 결과 CSV</a>
+            <a id="ml-export-json" class="btn-link" download>{ } ML 결과 JSON</a>
+        </div>
+    </section>
+
+    <!-- LLM 분석 탭 -->
+    <section id="tab-llm" class="tab-panel">
+        <h2>고위험 이벤트 LLM 한국어 분석</h2>
+        <p class="hint">
+            MITRE 점수 ≥ 70인 이벤트만 LLM에 전달하여 한국어 위험 요약과 대응 방안을 생성합니다.
+        </p>
+        <div class="filter-bar">
+            <label>심각도:
+                <select id="sev-filter">
+                    <option value="">전체</option>
+                    <option value="CRITICAL">CRITICAL</option>
+                    <option value="HIGH">HIGH</option>
+                    <option value="MEDIUM">MEDIUM</option>
+                    <option value="LOW">LOW</option>
+                </select>
+            </label>
+            <label>기간:
+                <select id="llm-since">
+                    <option value="now-24h">최근 24시간</option>
+                    <option value="now-7d" selected>최근 7일</option>
+                    <option value="now-30d">최근 30일</option>
+                </select>
+            </label>
+            <button id="llm-refresh">새로고침</button>
+            <span class="spacer"></span>
+            <a id="llm-export-csv"  class="btn-link" download>CSV 다운로드</a>
+            <a id="llm-export-json" class="btn-link" download>{ } JSON</a>
+        </div>
+        <div class="row">
+            <div class="panel small">
+                <h3>심각도 분포</h3>
+                <canvas id="chart-severity"></canvas>
+            </div>
+            <div class="panel small">
+                <h3>위험 점수(0–10) 분포</h3>
+                <canvas id="chart-risk"></canvas>
+            </div>
+        </div>
+        <div class="panel full">
+            <h3>최근 분석 결과</h3>
+            <div id="llm-table-wrap">
+                <table id="llm-table">
+                    <thead>
+                        <tr>
+                            <th>시각</th>
+                            <th>심각도</th>
+                            <th>위험점수</th>
+                            <th>출발지 IP</th>
+                            <th>허니팟</th>
+                            <th>요약</th>
+                        </tr>
+                    </thead>
+                    <tbody id="llm-rows"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- 모델 학습 탭 -->
+    <section id="tab-train" class="tab-panel">
+        <h2>ML 모델 학습 파이프라인</h2>
+        <p class="hint">
+            T-Pot 데이터로 LightGBM 다중 분류기를 학습하고 ml-classifier에 자동 배포합니다.
+            데이터셋은 ES에서 자동 추출하거나 로컬 CSV를 업로드할 수 있습니다.
+            모델 활성화 시 ml-classifier가 mtime 변경을 감지해 자동으로 다시 로드합니다.
+            다른 알고리즘을 사용하려면 같은 16개 피처 스키마로 직접 학습한
+            <code>multi_model.pkl</code> 을 활성 디렉터리에 업로드하세요.
+        </p>
+
+        <!-- 활성 모델 정보 -->
+        <div class="panel full">
+            <h3>현재 활성 모델</h3>
+            <div id="active-model-info" class="active-model">로딩 중…</div>
+        </div>
+
+        <!-- 사전 학습 모델 직접 업로드 (BYOM) -->
+        <div class="panel full">
+            <h3>사전 학습 모델 직접 업로드 (BYOM)</h3>
+            <p class="hint" style="margin:0 0 12px;">
+                외부에서 학습된 모델을 ml-classifier에 즉시 배포합니다 (학습 파이프라인 우회).
+                <code>multi_model.pkl</code>은 sklearn 호환(<code>predict</code>/<code>predict_proba</code> 보유)이고,
+                <code>feature_extract.FEATURE_COLS</code> 16개 피처 스키마로 학습되어 있어야 합니다.
+                업로드 시 pickle 로드 + 인터페이스 검증 후 활성 디렉터리에 원자적으로 이동되며,
+                ml-classifier가 다음 폴링 사이클에 자동 재로드합니다.
+            </p>
+            <div class="form-row">
+                <label>multi_model.pkl: <input type="file" id="byom-model" accept=".pkl"></label>
+            </div>
+            <div class="form-row">
+                <label>encoders.json (선택): <input type="file" id="byom-encoders" accept=".json"></label>
+                <button id="byom-submit" class="primary">활성 모델로 업로드</button>
+            </div>
+            <div id="byom-status" class="job-status"></div>
+        </div>
+
+        <!-- 1. 데이터셋 -->
+        <div class="row">
+            <div class="panel">
+                <h3>1. 데이터셋 — ES 자동 추출</h3>
+                <div class="form-row">
+                    <label>기간:
+                        <select id="ds-since">
+                            <option value="now-1h">최근 1시간</option>
+                            <option value="now-3h" selected>최근 3시간</option>
+                            <option value="now-6h">최근 6시간</option>
+                            <option value="now-24h">최근 24시간</option>
+                            <option value="now-7d">최근 7일</option>
+                        </select>
+                    </label>
+                    <label>최대 건수:
+                        <input id="ds-max" type="number" value="30000" min="1000" max="500000" step="1000">
+                    </label>
+                    <label title="클래스당 최대 샘플 수 (다수 클래스 다운샘플링). 권장: 8000~10000. 0이면 비활성화.">
+                        클래스당 샘플 수 (균형):
+                        <input id="ds-balance-n" type="number" value="10000" min="0" max="100000" step="1000">
+                    </label>
+                    <label title="NSL-KDD 오픈 데이터셋에서 정상 트래픽을 다운로드합니다. 기본: balance_n과 동일. 0이면 비활성화.">
+                        정상 트래픽 (NSL-KDD):
+                        <input id="ds-normal-n" type="number" value="10000" min="0" max="100000" step="1000">
+                    </label>
+                    <button id="ds-build" class="primary">데이터셋 생성</button>
+                </div>
+                <div id="ds-status" class="job-status"></div>
+            </div>
+
+            <div class="panel">
+                <h3>1. 데이터셋 — CSV 업로드 (수동)</h3>
+                <p class="hint" style="margin:0 0 12px;">
+                    스키마: 16개 피처 컬럼 + <code>label</code>.
+                    train.csv 단독으로 올리면 80/20 자동 분할되고,
+                    test.csv도 함께 올리면 그 분할이 그대로 사용됩니다.
+                </p>
+                <div class="form-row">
+                    <label>train.csv: <input type="file" id="up-train" accept=".csv"></label>
+                </div>
+                <div class="form-row">
+                    <label>test.csv (선택): <input type="file" id="up-test" accept=".csv"></label>
+                </div>
+                <div class="form-row">
+                    <label>encoders.json (선택): <input type="file" id="up-enc" accept=".json"></label>
+                    <button id="up-submit" class="primary">업로드</button>
+                </div>
+                <div id="up-status" class="job-status"></div>
+            </div>
+        </div>
+
+        <!-- 2. 학습 -->
+        <div class="panel full">
+            <h3>2. 학습</h3>
+            <div class="form-row">
+                <label>데이터셋 작업:
+                    <select id="train-source"></select>
+                </label>
+                <label title="SMOTE: 소수 클래스 합성 오버샘플링. MDPI IDS 2024 논문: class_weight=balanced와 함께 사용 시 최우수 성능.">
+                    <input type="checkbox" id="train-smote"> SMOTE 적용
+                </label>
+                <label title="Stratified 5-Fold CV: Nature NPJ 2024 권고. 불균형 보안 데이터에서 단일 분할보다 신뢰성 높은 지표 제공. 체크 시 CV 생략(빠름).">
+                    <input type="checkbox" id="train-no-cv"> CV 생략 (빠른 학습)
+                </label>
+                <button id="train-start" class="primary">학습 시작 (LightGBM)</button>
+                <button id="train-refresh">↻ 작업 목록 새로고침</button>
+            </div>
+            <div id="train-status" class="job-status"></div>
+            <pre id="train-log" class="job-log"></pre>
+        </div>
+
+        <!-- 3. 활성화 -->
+        <div class="panel full">
+            <h3>3. 모델 활성화</h3>
+            <p class="hint" style="margin:0 0 12px;">
+                학습 완료된 작업을 선택해 ml-classifier에 배포합니다.
+                ml-classifier는 모델 파일의 변경을 감지하면 다음 폴링 사이클부터 자동으로 새 모델을 사용합니다 (재시작 불필요).
+            </p>
+            <div class="form-row">
+                <label>학습 작업:
+                    <select id="activate-source"></select>
+                </label>
+                <button id="activate-start" class="primary">활성화</button>
+            </div>
+            <div id="activate-status" class="job-status"></div>
+        </div>
+
+        <!-- 작업 이력 -->
+        <div class="panel full">
+            <h3>작업 이력</h3>
+            <table id="jobs-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>종류</th>
+                        <th>상태</th>
+                        <th>업데이트</th>
+                        <th>비고</th>
+                    </tr>
+                </thead>
+                <tbody id="jobs-rows"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- 리포트 탭 -->
+    <section id="tab-reports" class="tab-panel">
+        <h2>한국어 PDF 리포트</h2>
+        <p class="hint">
+            지정 기간 동안의 위협 인텔리전스를 요약한 한국어 PDF 보고서를 생성합니다.
+            고위험 이벤트 상위 50건 + ML 분류 통계 + LLM 분석 요약이 포함됩니다.
+        </p>
+        <div class="report-controls">
+            <label>기간:
+                <select id="report-since">
+                    <option value="now-24h">최근 24시간</option>
+                    <option value="now-7d" selected>최근 7일</option>
+                    <option value="now-30d">최근 30일</option>
+                </select>
+            </label>
+            <button id="report-generate" class="primary">리포트 생성</button>
+            <span id="report-status" class="status"></span>
+        </div>
+        <div class="panel full">
+            <h3>최근 생성된 리포트</h3>
+            <ul id="report-list" class="report-list"></ul>
+        </div>
+    </section>
+</main>
+
+<footer class="footer">
+    Threat Console v0.1 · ml-classifier + llm-analyzer · T-Pot 24.04.1
+</footer>
+
+<script src="/threat-console/static/js/console.js"></script>
+</body>
+</html>

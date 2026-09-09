@@ -1,0 +1,89 @@
+# Local development compose — no honeypots, no Logstash, no nginx.
+# Runs Elasticsearch + threat-console + ml-classifier on localhost.
+#
+# Usage:
+#   docker compose -f compose/local_dev.yml up -d --build
+#
+# Access:
+#   threat-console  →  http://localhost:8080
+#   Elasticsearch   →  http://localhost:9200
+#
+# To load existing CSV logs into ES for analysis:
+#   python docker/ml-classifier/training/csv_to_es.py \
+#       --csv-dir /path/to/logs/csv --es http://localhost:9200
+#
+# To train directly from local CSV files (no ES needed):
+#   Use threat-console → ML 학습 탭 → CSV 업로드
+#   (pre-process CSVs with build_dataset.py --from-csv-dir first)
+
+services:
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: es-local
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx1g
+      - ELASTIC_PASSWORD=
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  threat-console:
+    container_name: threat-console
+    restart: unless-stopped
+    build:
+      context: ./docker
+      dockerfile: threat-console/Dockerfile
+    image: tpot/threat-console:local
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+      - REPORT_DIR=/data/threat-console/reports
+      - TRAIN_DIR=/data/threat-console/training
+      - MODEL_ACTIVE_DIR=/data/ml-classifier/models
+      - LISTEN_PORT=8080
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./data/threat-console:/data/threat-console
+      - ./data/ml-classifier/models:/data/ml-classifier/models
+
+  ml-classifier:
+    container_name: ml-classifier
+    restart: unless-stopped
+    build:
+      context: ./docker/ml-classifier
+      dockerfile: Dockerfile
+    image: tpot/ml-classifier:local
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+      - ES_SOURCE_INDEX=logstash-*
+      - ES_TARGET_PREFIX=ml-analysis-
+      - POLL_INTERVAL_SEC=60
+      - BATCH_SIZE=1000
+      - MODEL_DIR=/data/ml-classifier/models
+      - STATE_DIR=/data/ml-classifier
+      - CONF_THRESHOLD=0.5
+    volumes:
+      - ./data/ml-classifier:/data/ml-classifier
+
+volumes:
+  esdata:

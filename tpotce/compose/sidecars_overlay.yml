@@ -1,0 +1,105 @@
+# Overlay file: adds the threat-console, ml-classifier and llm-analyzer
+# sidecars on top of the user's already-running standard T-Pot.
+#
+# Run (all three):
+#   docker compose -f docker-compose.yml -f compose/sidecars_overlay.yml \
+#       up -d --build threat-console ml-classifier llm-analyzer nginx
+#
+# llm-analyzer needs an LLM backend. It defaults to an `ollama` service on the
+# compose network; point it elsewhere with LLM_PROVIDER / OLLAMA_HOST (or the
+# openai/anthropic/gemini keys) in .env.  Without a reachable backend it still
+# runs and writes rule-based fallback documents rather than stalling.
+services:
+  # nginx override: mount our modified tpotweb.conf so /threat-console/ proxies
+  # to the threat-console container.  The base T-Pot nginx image has no such
+  # route, so without this override clients get HTTP 500 on /threat-console/.
+  nginx:
+    volumes:
+      - ${TPOT_DATA_PATH}/nginx/cert/:/etc/nginx/cert/:ro
+      - ${TPOT_DATA_PATH}/nginx/conf/nginxpasswd:/etc/nginx/nginxpasswd:ro
+      - ${TPOT_DATA_PATH}/nginx/log/:/var/log/nginx/
+      - ./docker/nginx/dist/conf/tpotweb.conf:/etc/nginx/conf.d/tpotweb.conf:ro
+      - ./docker/nginx/dist/html/index.html:/var/lib/nginx/html/index.html:ro
+
+
+  ml-classifier:
+    container_name: ml-classifier
+    restart: always
+    build:
+      context: ./docker/ml-classifier
+      dockerfile: Dockerfile
+    image: tpot/ml-classifier:local
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - nginx_local
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+      - ES_SOURCE_INDEX=logstash-*
+      - ES_TARGET_PREFIX=ml-analysis-
+      - POLL_INTERVAL_SEC=60
+      - BATCH_SIZE=1000
+      - MODEL_DIR=/data/ml-classifier/models
+      - STATE_DIR=/data/ml-classifier
+      # Predictions below this confidence are treated as Etc (benign/unknown)
+      # instead of forcing a wrong attack label on out-of-distribution traffic.
+      - CONF_THRESHOLD=0.5
+    volumes:
+      - ${TPOT_DATA_PATH}/ml-classifier:/data/ml-classifier
+
+  threat-console:
+    container_name: threat-console
+    restart: always
+    build:
+      context: ./docker
+      dockerfile: threat-console/Dockerfile
+    image: tpot/threat-console:local
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - nginx_local
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+      - REPORT_DIR=/data/threat-console/reports
+      - TRAIN_DIR=/data/threat-console/training
+      - MODEL_ACTIVE_DIR=/data/ml-classifier/models
+      - LISTEN_PORT=8080
+    tmpfs:
+      - /tmp
+    volumes:
+      - ${TPOT_DATA_PATH}/threat-console:/data/threat-console
+      - ${TPOT_DATA_PATH}/ml-classifier/models:/data/ml-classifier/models
+
+  llm-analyzer:
+    container_name: llm-analyzer
+    restart: always
+    build:
+      context: ./docker/llm-analyzer
+      dockerfile: Dockerfile
+    image: tpot/llm-analyzer:local
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - nginx_local
+    environment:
+      - ES_HOST=http://elasticsearch:9200
+      - ES_SOURCE_INDEX=ml-analysis-*
+      - ES_TARGET_PREFIX=llm-analysis-
+      # Only events the ML sidecar scored this high are worth an LLM call.
+      - MIN_SCORE=${LLM_MIN_SCORE:-70}
+      - POLL_INTERVAL_SEC=${LLM_POLL_INTERVAL_SEC:-120}
+      - BATCH_SIZE=${LLM_BATCH_SIZE:-20}
+      - STATE_DIR=/data/llm-analyzer
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LLM_MODEL=${LLM_MODEL:-llama3.1:8b}
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://ollama:11434}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - LLM_TIMEOUT_SEC=${LLM_TIMEOUT_SEC:-120}
+      - WRITE_FALLBACK=${LLM_WRITE_FALLBACK:-true}
+    volumes:
+      - ${TPOT_DATA_PATH}/llm-analyzer:/data/llm-analyzer

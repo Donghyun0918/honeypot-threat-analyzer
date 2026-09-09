@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Honeypot Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 30px;
+            background-color: #f4f6f8;
+        }
+
+        h1, h2 {
+            color: #222;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            box-sizing: border-box;
+            margin-bottom: 12px;
+        }
+
+        button {
+            padding: 10px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            background-color: #2563eb;
+            color: white;
+            font-size: 14px;
+            margin-right: 8px;
+        }
+
+        button:hover {
+            background-color: #1d4ed8;
+        }
+
+        .project-item {
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            background: #fafafa;
+        }
+
+        .project-item:hover {
+            background: #eef2ff;
+            border-color: #93c5fd;
+        }
+
+        .log-card {
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 14px;
+            border: 1px solid #ddd;
+            background: white;
+        }
+
+        .severity-LOW {
+            border-left: 8px solid #22c55e;
+        }
+
+        .severity-MEDIUM {
+            border-left: 8px solid #f59e0b;
+        }
+
+        .severity-HIGH {
+            border-left: 8px solid #ef4444;
+        }
+
+        .severity-CRITICAL {
+            border-left: 8px solid #7f1d1d;
+        }
+
+        .meta {
+            color: #555;
+            margin-bottom: 8px;
+        }
+
+        .section-title {
+            margin-top: 0;
+        }
+
+        .mono {
+            font-family: Consolas, monospace;
+            background: #f3f4f6;
+            padding: 6px 8px;
+            border-radius: 6px;
+            display: inline-block;
+        }
+
+        pre {
+            background: #111827;
+            color: #f9fafb;
+            padding: 16px;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        .empty {
+            color: #666;
+            padding: 12px 0;
+        }
+
+        .top-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>허니팟 공격 분석 대시보드</h1>
+
+    <div class="card">
+        <h2 class="section-title">1. JWT 토큰 입력</h2>
+        <label for="token">Bearer Token</label>
+        <textarea id="token" rows="4" placeholder="로그인 응답으로 받은 JWT 토큰을 붙여넣으세요."></textarea>
+
+        <div class="top-actions">
+            <button onclick="loadMyProjects()">내 프로젝트 불러오기</button>
+            <button onclick="clearAllData()">화면 초기화</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2 class="section-title">2. 내 프로젝트 목록</h2>
+        <div id="projectList" class="empty">토큰 입력 후 '내 프로젝트 불러오기'를 눌러주세요.</div>
+    </div>
+
+    <div class="card">
+        <h2 class="section-title">3. 선택한 프로젝트 정보</h2>
+        <div id="selectedProjectInfo" class="empty">아직 프로젝트가 선택되지 않았습니다.</div>
+    </div>
+
+    <div class="card">
+        <h2 class="section-title">4. 공격 로그 + 분석 결과</h2>
+        <div id="logList" class="empty">프로젝트를 선택하면 공격 로그와 분석 결과가 표시됩니다.</div>
+    </div>
+
+    <div class="card">
+        <h2 class="section-title">5. 응답 원본(JSON)</h2>
+        <pre id="rawResult">여기에 원본 응답이 표시됩니다.</pre>
+    </div>
+</div>
+
+<script>
+    const apiBase = "http://localhost:8080";
+
+    function getToken() {
+        return document.getElementById("token").value.trim();
+    }
+
+    function getAuthHeaders() {
+        const token = getToken();
+
+        if (!token) {
+            throw new Error("JWT 토큰이 비어 있습니다.");
+        }
+
+        return {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json"
+        };
+    }
+
+    function setRawResult(data) {
+        document.getElementById("rawResult").textContent =
+            typeof data === "string" ? data : JSON.stringify(data, null, 2);
+    }
+
+    function clearAllData() {
+        document.getElementById("projectList").innerHTML = "토큰 입력 후 '내 프로젝트 불러오기'를 눌러주세요.";
+        document.getElementById("selectedProjectInfo").innerHTML = "아직 프로젝트가 선택되지 않았습니다.";
+        document.getElementById("logList").innerHTML = "프로젝트를 선택하면 공격 로그와 분석 결과가 표시됩니다.";
+        setRawResult("여기에 원본 응답이 표시됩니다.");
+    }
+
+    async function loadMyProjects() {
+        try {
+            const response = await fetch(`${apiBase}/api/projects/my`, {
+                method: "GET",
+                headers: getAuthHeaders()
+            });
+
+            if (!response.ok) {
+                throw new Error("프로젝트 조회 실패: " + response.status);
+            }
+
+            const projects = await response.json();
+            setRawResult(projects);
+
+            const projectList = document.getElementById("projectList");
+            projectList.innerHTML = "";
+
+            if (projects.length === 0) {
+                projectList.innerHTML = "<div class='empty'>등록된 프로젝트가 없습니다.</div>";
+                return;
+            }
+
+            projects.forEach(project => {
+                const div = document.createElement("div");
+                div.className = "project-item";
+                div.innerHTML = `
+                    <div><strong>프로젝트명:</strong> ${project.name}</div>
+                    <div><strong>설명:</strong> ${project.description}</div>
+                    <div><strong>프로젝트 ID:</strong> ${project.id}</div>
+                    <div><strong>사용자:</strong> ${project.userEmail}</div>
+                `;
+                div.onclick = () => selectProject(project);
+                projectList.appendChild(div);
+            });
+
+        } catch (error) {
+            setRawResult(error.toString());
+            document.getElementById("projectList").innerHTML =
+                "<div class='empty'>프로젝트를 불러오지 못했습니다.</div>";
+        }
+    }
+
+    async function selectProject(project) {
+        document.getElementById("selectedProjectInfo").innerHTML = `
+            <div><strong>프로젝트명:</strong> ${project.name}</div>
+            <div><strong>설명:</strong> ${project.description}</div>
+            <div><strong>프로젝트 ID:</strong> <span class="mono">${project.id}</span></div>
+            <div><strong>사용자 이메일:</strong> ${project.userEmail}</div>
+        `;
+
+        await loadProjectLogs(project.id);
+    }
+
+    async function loadProjectLogs(projectId) {
+        try {
+            const response = await fetch(`${apiBase}/api/projects/${projectId}/logs`, {
+                method: "GET",
+                headers: getAuthHeaders()
+            });
+
+            if (!response.ok) {
+                throw new Error("공격 로그 조회 실패: " + response.status);
+            }
+
+            const logs = await response.json();
+            setRawResult(logs);
+
+            const logList = document.getElementById("logList");
+            logList.innerHTML = "";
+
+            if (logs.length === 0) {
+                logList.innerHTML = "<div class='empty'>이 프로젝트에는 공격 로그가 없습니다.</div>";
+                return;
+            }
+
+            logs.forEach(log => {
+                const severity = log.analysis?.severity || "UNKNOWN";
+                const riskScore = log.analysis?.riskScore ?? "-";
+                const summary = log.analysis?.summary ?? "분석 결과 없음";
+                const solution = log.analysis?.solution ?? "대응 방안 없음";
+
+                const div = document.createElement("div");
+                div.className = `log-card severity-${severity}`;
+
+                div.innerHTML = `
+                    <div><strong>AttackLog ID:</strong> ${log.attackLogId}</div>
+                    <div><strong>공격 유형:</strong> ${log.attackType}</div>
+                    <div><strong>IP 주소:</strong> ${log.ipAddress}</div>
+                    <div><strong>발생 시각:</strong> ${log.createdAt}</div>
+                    <div><strong>Payload:</strong> <span class="mono">${escapeHtml(log.payload)}</span></div>
+                    <hr>
+                    <div><strong>위험도 점수:</strong> ${riskScore}</div>
+                    <div><strong>심각도:</strong> ${severity}</div>
+                    <div><strong>요약:</strong> ${summary}</div>
+                    <div><strong>대응 방안:</strong> ${solution}</div>
+                `;
+
+                logList.appendChild(div);
+            });
+
+        } catch (error) {
+            setRawResult(error.toString());
+            document.getElementById("logList").innerHTML =
+                "<div class='empty'>공격 로그를 불러오지 못했습니다.</div>";
+        }
+    }
+
+    function escapeHtml(text) {
+        if (text == null) return "";
+        return text
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;");
+    }
+</script>
+</body>
+</html>

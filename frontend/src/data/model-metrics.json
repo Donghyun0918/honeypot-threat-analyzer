@@ -1,0 +1,94 @@
+{
+  "algorithm": "lgbm",
+  "split_method": "stratified_80_20",
+  "multi": {
+    "accuracy": 0.9978,
+    "macro_f1": 0.9978,
+    "train_sec": 1.25,
+    "labels": [
+      "Brute Force",
+      "Etc",
+      "Intrusion",
+      "Malware",
+      "Normal",
+      "Recon"
+    ],
+    "report": {
+      "Brute Force": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 2000.0
+      },
+      "Etc": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 169.0
+      },
+      "Intrusion": {
+        "precision": 0.9934782608695653,
+        "recall": 0.9956427015250545,
+        "f1-score": 0.9945593035908596,
+        "support": 918.0
+      },
+      "Malware": {
+        "precision": 0.9945054945054945,
+        "recall": 0.9955,
+        "f1-score": 0.9950024987506247,
+        "support": 2000.0
+      },
+      "Normal": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1-score": 1.0,
+        "support": 2000.0
+      },
+      "Recon": {
+        "precision": 0.998496993987976,
+        "recall": 0.9965,
+        "f1-score": 0.9974974974974975,
+        "support": 2000.0
+      },
+      "accuracy": 0.997799053593045,
+      "macro avg": {
+        "precision": 0.9977467915605059,
+        "recall": 0.9979404502541759,
+        "f1-score": 0.9978432166398302,
+        "support": 9087.0
+      },
+      "weighted avg": {
+        "precision": 0.997801036696952,
+        "recall": 0.997799053593045,
+        "f1-score": 0.9977996515013376,
+        "support": 9087.0
+      }
+    }
+  },
+  "cv": {
+    "cv_folds": 5,
+    "cv_acc_mean": 0.9982,
+    "cv_acc_std": 0.0005,
+    "cv_f1_mean": 0.9981,
+    "cv_f1_std": 0.0005
+  },
+  "n_train": 36344,
+  "n_test": 9087,
+  "n_features": 16,
+  "params": {
+    "n_estimators": 200,
+    "max_depth": null,
+    "seed": 42
+  },
+  "methodology": {
+    "split_ratio": "80/20 stratified",
+    "cv_strategy": "stratified_5_fold",
+    "imbalance_method": "class_weight=balanced + optional SMOTE",
+    "references": [
+      "Stanford CS230 deep learning split guidelines",
+      "Nature NPJ Digital Medicine 2024 (min dataset sizes)",
+      "MDPI Sensors 2024 (SMOTE+class_weight for IDS)",
+      "CIC-IDS2017 (benign:attack ratio reference)"
+    ]
+  }
+}

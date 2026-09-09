@@ -1,0 +1,13 @@
+# Ignore data folder
+data/*
+# compose 가 파일 단위로 마운트하는 설정. 없으면 Docker 가 같은 이름의
+# 디렉토리를 만들어 프론트가 오작동한다 — 반드시 저장소에 있어야 한다.
+!data/ml-classifier/
+data/ml-classifier/*
+!data/ml-classifier/models/
+data/ml-classifier/models/*
+!data/ml-classifier/models/active-metrics.json
+_data/
+**/.DS_Store
+.idea
+install_tpot.log

@@ -1,0 +1,273 @@
+# [DEV] 개발용 스택 — 원본(../capstone)과 포트·컨테이너명·볼륨이 분리돼 있다.
+# 원본 스택을 내리고 이쪽만 띄우는 것을 전제로 한다(호스트 RAM 7.8GB).
+#
+# 캡스톤 졸작 통합 compose — Spring Boot + Postgres + Next.js + Ollama
+#
+# T-Pot은 별도 (../tpot-fork/)에서 이미 기동 중. 이 compose는 capstone-only
+# 신규 컴포넌트만 띄움. T-Pot의 wordpot/heralding이 호스트 5432/8080을 점유
+# 하므로 capstone은 5433/8090으로 우회.
+#
+# 실행:
+#   cd /mnt/d/T-POT_PR/capstone && docker compose up -d
+#
+# 접속:
+#   Frontend (Next.js)        http://localhost:8002
+#   Spring Boot REST          http://localhost:8091
+#   PostgreSQL                localhost:5434  (postgres / capstone-dev)
+#   Elasticsearch             http://localhost:19300
+#   Ollama                    http://localhost:11435
+#   T-Pot 어택맵              http://localhost:8002/tpot-map/  (프론트 경유)
+#
+# llm-analyzer 는 포트를 열지 않는 배치 데몬 (ES→LLM→ES).
+
+services:
+  # 데모용 Elasticsearch. 구 phase1-es(외부 컨테이너)에 의존하던 구성을 스택
+  # 안으로 들여와 `docker compose up -d` 한 번으로 재현되게 함.
+  # 실 T-Pot 데이터로 붙이려면 .env 에서 ES_HOST 를 T-Pot ES 로 덮어쓰면 된다
+  # (tpotce/compose/infra_only.yml 기동 후 http://<tpot-es>:9200).
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.2
+    container_name: dev-es
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "19300:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: dev-postgres
+    environment:
+      POSTGRES_DB: honeypot_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: capstone-dev
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d honeypot_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # 통합 백엔드 (threat-console 흡수본). 구 ./profiling-service 대신 ./backend/honeypot 빌드.
+  # 서비스명은 frontend depends_on 호환을 위해 profiling-service 유지.
+  profiling-service:
+    build: ./backend/honeypot
+    container_name: dev-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/honeypot_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: capstone-dev
+      # 스택 내부 ES. 실 T-Pot 데이터로 바꾸려면 .env 의 ES_HOST 로 덮어쓴다.
+      ES_HOST: ${ES_HOST:-http://elasticsearch:9200}
+      # 외부 FastAPI 분석 서비스는 쓰지 않는다(주 분석 경로는 ES 사이드카).
+      # 예전엔 존재하지 않는 호스트를 넣어뒀는데, 그러면 적재할 때마다 DNS 를
+      # 두드리고 실패를 "riskScore 50" 같은 가짜 결과로 저장했다.
+      FASTAPI_ENABLED: "false"
+      FASTAPI_URL: ""
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-capstone-internal-token}
+      # 비워두면 기동 시 임의 키가 생성된다(재기동하면 토큰 무효).
+      # 실제 운영/시연 전에 .env 에 넣을 것: openssl rand -base64 48
+      JWT_SECRET: ${JWT_SECRET:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8091:8080"
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dev-ollama
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # 모델 자동 다운로드 (1회성, ollama healthy 후 백그라운드)
+  ollama-model-pull:
+    image: ollama/ollama:latest
+    container_name: dev-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    # .env 의 LLM_MODEL 과 같은 모델을 받는다. 예전엔 llama3.1:8b 가 하드코딩돼
+    # 있어 쓰지도 않는 4.9GB 를 매번 내려받았다(호스트 RAM 으로는 구동 불가).
+    entrypoint: ["sh", "-c", "ollama pull ${LLM_MODEL:-qwen2.5:3b}"]
+    restart: "no"
+
+  # ML 분류 사이드카 — logstash-* 를 폴링해 6라벨 LightGBM 으로 분류 후
+  # ml-analysis-* 적재. 모델은 tpotce/data/ml-classifier/models/ 의
+  # multi_model.pkl + encoders.json (재학습본, 파일 변경 시 hot-reload).
+  ml-classifier:
+    build: ./tpotce/docker/ml-classifier
+    image: tpot/ml-classifier:local
+    container_name: dev-ml-classifier
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      ES_HOST: ${ES_HOST:-http://elasticsearch:9200}
+      ES_SOURCE_INDEX: "logstash-*"
+      ES_TARGET_PREFIX: "ml-analysis-"
+      POLL_INTERVAL_SEC: ${ML_POLL_INTERVAL_SEC:-30}
+      BATCH_SIZE: ${ML_BATCH_SIZE:-1000}
+      MODEL_DIR: /data/ml-classifier/models
+      STATE_DIR: /data/ml-classifier
+      CONF_THRESHOLD: ${ML_CONF_THRESHOLD:-0.5}
+      # 커서가 없을 때 되돌아볼 범위. 기본 5분은 재분류(커서 초기화) 시
+      # 기존 문서를 전혀 못 본다.
+      BOOTSTRAP_WINDOW: ${ML_BOOTSTRAP_WINDOW:-now-24h}
+    volumes:
+      - ./tpotce/data/ml-classifier:/data/ml-classifier
+    restart: unless-stopped
+
+  # LLM 2차 분석 사이드카 — ES ml-analysis-* 중 고위험(MIN_SCORE 이상)만
+  # 한국어로 요약/대응방안 생성 후 llm-analysis-* 에 적재.
+  # backend/threat-console 의 llm-recent·llm-stats 는 이 인덱스를 읽는다
+  # (기존에는 이 인덱스를 채우는 주체가 없어 샘플 주입에 의존했음).
+  llm-analyzer:
+    build: ./tpotce/docker/llm-analyzer
+    image: tpot/llm-analyzer:local
+    container_name: dev-llm-analyzer
+    depends_on:
+      ollama:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      ml-classifier:
+        condition: service_started
+    environment:
+      # backend 와 동일한 ES 를 바라본다.
+      ES_HOST: ${ES_HOST:-http://elasticsearch:9200}
+      ES_SOURCE_INDEX: "ml-analysis-*"
+      ES_TARGET_PREFIX: "llm-analysis-"
+      MIN_SCORE: ${LLM_MIN_SCORE:-70}
+      POLL_INTERVAL_SEC: ${LLM_POLL_INTERVAL_SEC:-120}
+      BATCH_SIZE: ${LLM_BATCH_SIZE:-20}
+      STATE_DIR: /data/llm-analyzer
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-llama3.1:8b}
+      OLLAMA_HOST: http://ollama:11434
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      WRITE_FALLBACK: ${LLM_WRITE_FALLBACK:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - llm_analyzer_state:/data/llm-analyzer
+    restart: unless-stopped
+
+  # ── T-Pot 어택맵 3종 ────────────────────────────────────────────────
+  # 원본은 T-Pot compose(infra_only.yml)에 있으나 그 스택은 안 띄우므로
+  # capstone_default 로 옮겨 담는다. 프론트의 server.js 가 /tpot-map/* 와
+  # /websocket 을 map_web 으로 프록시하려면 같은 네트워크에 있어야 한다.
+  # map_data 는 http://elasticsearch:9200 과 map_redis 를 하드코딩하고 있어
+  # 서비스명을 그대로 맞춰야 동작한다.
+  map_redis:
+    image: ghcr.io/telekom-security/redis:24.04.1
+    container_name: dev-map_redis
+    stop_signal: SIGKILL
+    tty: true
+    read_only: true
+    restart: unless-stopped
+
+  map_web:
+    image: ghcr.io/telekom-security/map:24.04.1
+    container_name: dev-map_web
+    environment:
+      MAP_COMMAND: AttackMapServer.py
+      TZ: UTC
+    volumes:
+      # CARTO 가 타일에 API 키를 요구하게 되면서 지도 위에 "API KEY REQUIRED"
+      # 워터마크가 깔린다. 타일 소스를 OSM 으로 바꾼 map.js 를 덮어씌운다.
+      - ./tpotce/docker/map-override/map.js:/opt/t-pot-attack-map/static/map.js:ro
+    depends_on:
+      - map_redis
+    stop_signal: SIGKILL
+    tty: true
+    ports:
+      - "127.0.0.1:64399:64299"
+    restart: unless-stopped
+
+  map_data:
+    image: ghcr.io/telekom-security/map:24.04.1
+    container_name: dev-map_data
+    environment:
+      MAP_COMMAND: DataServer_v2.py
+      TPOT_ATTACKMAP_TEXT: "ENABLED"
+      TZ: UTC
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      map_redis:
+        condition: service_started
+    stop_signal: SIGKILL
+    tty: true
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: dev-frontend
+    depends_on:
+      - profiling-service
+      - ollama
+      - map_web
+    environment:
+      NODE_ENV: production
+      OLLAMA_HOST: http://ollama:11434
+      # LLM 제공자 선택: ollama(기본) | openai | anthropic | gemini | openai-compatible
+      # 키 미설정 시 ollama 로 동작. 다른 제공자는 LLM_PROVIDER 바꾸고 해당 키만 .env 에 채우면 됨.
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Next.js → Spring API 호출 시 컨테이너 네트워크 이름 사용
+      SPRING_API_URL: http://profiling-service:8080
+      # 대시보드 "현재 분류 모델" 카드가 실제 활성 분류기를 반영하도록.
+      # 번들 model-metrics.json 은 학습 LightGBM 기준이라, 룰 모드로 운영 중일 때
+      # 그대로 두면 카드가 "LightGBM 99.8%" 라고 거짓 표시한다.
+      MODEL_METRICS_PATH: /data/model-metrics.json
+      # T-Pot 어택맵 리버스프록시 타깃 (커스텀 server.js). map_web 도달하려면
+      # 이 컨테이너를 T-Pot nginx_local 네트워크에 연결해야 함:
+      #   docker network connect <tpot>_nginx_local dev-frontend
+      TPOT_MAP_TARGET: http://map_web:64299
+    volumes:
+      - ./tpotce/data/ml-classifier/models/active-metrics.json:/data/model-metrics.json:ro
+    ports:
+      - "8002:8001"
+    restart: unless-stopped
+
+volumes:
+  es_data:
+  postgres_data:
+  ollama_data:
+  llm_analyzer_state:

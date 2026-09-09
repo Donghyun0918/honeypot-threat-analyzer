@@ -1,0 +1,25 @@
+# Reference fragment for the ml-classifier sidecar.
+# The full service is wired into ../../compose/ml.yml and ml_llm.yml.
+networks:
+  nginx_local:
+
+services:
+  ml-classifier:
+    container_name: ml-classifier
+    restart: always
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+     - nginx_local
+    environment:
+     - ES_HOST=http://elasticsearch:9200
+     - ES_SOURCE_INDEX=logstash-*
+     - ES_TARGET_PREFIX=ml-analysis-
+     - POLL_INTERVAL_SEC=60
+     - BATCH_SIZE=1000
+    image: ${TPOT_REPO}/ml-classifier:${TPOT_VERSION}
+    pull_policy: ${TPOT_PULL_POLICY}
+    read_only: true
+    volumes:
+     - ${TPOT_DATA_PATH}/ml-classifier:/data/ml-classifier

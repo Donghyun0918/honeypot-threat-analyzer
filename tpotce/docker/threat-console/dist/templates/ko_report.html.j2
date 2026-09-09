@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>위협 인텔리전스 리포트</title>
+<style>
+    @page {
+        size: A4;
+        margin: 18mm 16mm 20mm 16mm;
+        @bottom-center {
+            content: counter(page) " / " counter(pages);
+            color: #888;
+            font-size: 9pt;
+        }
+    }
+    * { font-family: 'Noto Sans CJK KR', 'NanumGothic', 'DejaVu Sans', sans-serif; }
+    body {
+        color: #222;
+        font-size: 10pt;
+        line-height: 1.55;
+    }
+    h1 {
+        font-size: 22pt;
+        color: #e20074;
+        border-bottom: 3px solid #e20074;
+        padding-bottom: 8px;
+        margin: 0 0 4px;
+    }
+    h2 {
+        font-size: 14pt;
+        color: #222;
+        border-left: 4px solid #e20074;
+        padding-left: 10px;
+        margin: 24px 0 10px;
+    }
+    h3 { font-size: 11pt; margin: 16px 0 6px; color: #444; }
+    .meta { color: #666; font-size: 9pt; margin-bottom: 18px; }
+
+    .summary-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        gap: 8px;
+        margin: 12px 0;
+    }
+    .stat-box {
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 10px;
+        text-align: center;
+    }
+    .stat-box .value {
+        font-size: 18pt;
+        font-weight: 700;
+        color: #e20074;
+    }
+    .stat-box .label {
+        font-size: 8pt;
+        color: #666;
+        margin-top: 4px;
+    }
+
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 6px;
+        font-size: 9pt;
+    }
+    th, td {
+        border: 1px solid #ddd;
+        padding: 6px 8px;
+        text-align: left;
+        vertical-align: top;
+    }
+    th {
+        background: #f5f5f5;
+        color: #333;
+        font-size: 8.5pt;
+    }
+    .sev-CRITICAL { color: #c00; font-weight: 700; }
+    .sev-HIGH     { color: #d97700; font-weight: 700; }
+    .sev-MEDIUM   { color: #b08000; }
+    .sev-LOW      { color: #0a8060; }
+
+    .threat-card {
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        padding: 10px 12px;
+        margin: 8px 0;
+        page-break-inside: avoid;
+    }
+    .threat-card .head {
+        display: flex;
+        justify-content: space-between;
+        font-size: 9pt;
+        color: #666;
+        margin-bottom: 6px;
+    }
+    .threat-card .ip { font-family: 'DejaVu Sans Mono', monospace; color: #222; }
+    .threat-card .summary { color: #222; margin: 6px 0; }
+    .threat-card .solution {
+        background: #f9f1f5;
+        border-left: 3px solid #e20074;
+        padding: 6px 10px;
+        margin-top: 6px;
+        font-size: 9pt;
+    }
+    .ttp { display: inline-block; background: #eee; padding: 1px 6px; border-radius: 3px; font-size: 8pt; margin-right: 4px; }
+    .footer-note { color: #888; font-size: 8pt; margin-top: 24px; border-top: 1px solid #eee; padding-top: 10px; }
+</style>
+</head>
+<body>
+
+<h1>위협 인텔리전스 리포트</h1>
+<div class="meta">
+    생성 시각: {{ generated_at }} · 분석 기간: {{ since }} ~ 현재
+    · 데이터 소스: T-Pot ELK + ml-classifier + llm-analyzer
+</div>
+
+<h2>1. 종합 요약</h2>
+<div class="summary-grid">
+    <div class="stat-box">
+        <div class="value">{{ '{:,}'.format(overview.total_events or 0) }}</div>
+        <div class="label">총 이벤트</div>
+    </div>
+    <div class="stat-box">
+        <div class="value">{{ '{:,}'.format(overview.total_attacks or 0) }}</div>
+        <div class="label">분류된 공격</div>
+    </div>
+    <div class="stat-box">
+        <div class="value">{{ '{:,}'.format(overview.high_risk or 0) }}</div>
+        <div class="label">고위험 (≥70)</div>
+    </div>
+    <div class="stat-box">
+        <div class="value">{{ '{:,}'.format(overview.llm_analyzed or 0) }}</div>
+        <div class="label">LLM 분석</div>
+    </div>
+</div>
+<p style="font-size:9.5pt;color:#444;margin-top:8px;">
+    분석 기간 동안 T-Pot 허니팟이 수집한 총 {{ '{:,}'.format(overview.total_events or 0) }}건의 이벤트 중,
+    ml-classifier가 {{ '{:,}'.format(overview.total_attacks or 0) }}건을 공격으로 분류했습니다.
+    이 중 MITRE ATT&amp;CK 점수 70 이상의 고위험 이벤트는 <strong>{{ '{:,}'.format(overview.high_risk or 0) }}건</strong>이며,
+    LLM이 한국어로 위험 요약을 생성한 건수는 <strong>{{ '{:,}'.format(overview.llm_analyzed or 0) }}건</strong>입니다.
+</p>
+
+<h2>2. 공격 유형 분포</h2>
+{% if label_buckets %}
+<table>
+    <tr><th>공격 유형</th><th>건수</th><th>비율</th></tr>
+    {% set total = label_buckets | sum(attribute='doc_count') %}
+    {% for b in label_buckets %}
+    <tr>
+        <td>{{ b.key }}</td>
+        <td>{{ '{:,}'.format(b.doc_count) }}</td>
+        <td>{{ '%.1f'|format(b.doc_count / total * 100 if total else 0) }}%</td>
+    </tr>
+    {% endfor %}
+</table>
+{% else %}
+<p style="color:#888;">분류된 데이터가 없습니다.</p>
+{% endif %}
+
+<h2>3. 허니팟별 공격 통계</h2>
+{% if honeypot_buckets %}
+<table>
+    <tr><th>허니팟</th><th>건수</th></tr>
+    {% for b in honeypot_buckets %}
+    <tr><td>{{ b.key }}</td><td>{{ '{:,}'.format(b.doc_count) }}</td></tr>
+    {% endfor %}
+</table>
+{% else %}
+<p style="color:#888;">데이터 없음.</p>
+{% endif %}
+
+<h2>4. 심각도별 LLM 분석 분포</h2>
+{% if severity_buckets %}
+<table>
+    <tr><th>심각도</th><th>건수</th></tr>
+    {% for b in severity_buckets %}
+    <tr><td class="sev-{{ b.key }}">{{ b.key }}</td><td>{{ '{:,}'.format(b.doc_count) }}</td></tr>
+    {% endfor %}
+</table>
+{% else %}
+<p style="color:#888;">LLM 분석 데이터가 아직 수집되지 않았습니다. (옵트인 서비스)</p>
+{% endif %}
+
+<h2>5. 고위험 사건 상세 (HIGH/CRITICAL 상위 50건)</h2>
+{% if high_risk_events %}
+{% for e in high_risk_events %}
+<div class="threat-card">
+    <div class="head">
+        <span>{{ e['@timestamp'][:19].replace('T', ' ') if e['@timestamp'] else '' }}</span>
+        <span>
+            <span class="sev-{{ e.severity or 'MEDIUM' }}">{{ e.severity or 'MEDIUM' }}</span>
+            · 위험점수 {{ '%.1f'|format(e.risk_score or 0) }}
+            · MITRE {{ e.mitre_score or 0 }}
+        </span>
+    </div>
+    <div>
+        <strong>출발지:</strong> <span class="ip">{{ e.src_ip or 'unknown' }}</span>
+        · <strong>허니팟:</strong> {{ e.honeypot or 'unknown' }}
+        · <strong>분류:</strong> {{ e.ml_label or 'unknown' }}
+    </div>
+    <div class="summary"><strong>요약:</strong> {{ e.summary_ko or '(없음)' }}</div>
+    {% if e.solution_ko %}
+    <div class="solution"><strong>대응 방안:</strong> {{ e.solution_ko }}</div>
+    {% endif %}
+    {% if e.ttp_inferred %}
+    <div style="margin-top:6px;">
+        {% for t in e.ttp_inferred %}<span class="ttp">{{ t }}</span>{% endfor %}
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+{% else %}
+<p style="color:#888;">고위험 사건이 없습니다.</p>
+{% endif %}
+
+<div class="footer-note">
+    이 리포트는 T-Pot 허니팟 플랫폼이 수집한 트래픽을 ml-classifier가 자동 분류하고,
+    그 중 MITRE ATT&amp;CK 점수 70 이상의 고위험 이벤트만 llm-analyzer가 추가 분석한 결과입니다.
+    LLM 출력은 자동 생성된 것이므로 운영 환경 적용 전 보안 분석가의 검토를 권장합니다.
+</div>
+
+</body>
+</html>

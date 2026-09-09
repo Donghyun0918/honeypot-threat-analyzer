@@ -1,0 +1,14 @@
+{
+  "_comment": "현재 ml-classifier 가 실제로 쓰는 분류기를 서술한다. /api/model 이 MODEL_METRICS_PATH 로 읽는다. 학습 모델을 models/ 최상위에 되돌리면 dataset/work/models/metrics.json 을 대신 마운트할 것.",
+  "algorithm": "rule",
+  "split_method": null,
+  "multi": {
+    "accuracy": null,
+    "macro_f1": null,
+    "labels": ["Recon", "Brute Force", "Malware", "Intrusion", "Etc"]
+  },
+  "cv": {},
+  "n_train": 0,
+  "n_test": 0,
+  "n_features": 16
+}

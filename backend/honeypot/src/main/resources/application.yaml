@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/honeypot_db}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+
+server:
+  port: 8080
+
+# 외부 분석 서비스(선택). 비우거나 enabled=false 면 호출하지 않는다.
+fastapi:
+  url: ${FASTAPI_URL:}
+  enabled: ${FASTAPI_ENABLED:true}
+
+internal:
+  service-token: ${INTERNAL_SERVICE_TOKEN:honeypot-internal-token}
+
+# JWT 서명 키. 비워두면 기동 시 임의 키를 만들고 경고를 남긴다
+# (재기동하면 기존 토큰이 무효). 운영에서는 반드시 설정할 것:
+#   openssl rand -base64 48
+jwt:
+  secret: ${JWT_SECRET:}
+  expiration-minutes: ${JWT_EXPIRATION_MINUTES:60}
+
+elasticsearch:
+  host: ${ES_HOST:http://elasticsearch:9200}
