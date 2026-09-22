@@ -49,19 +49,15 @@ export default function LoginPage() {
       });
       const data = await res.json().catch(() => ({}));
 
-      if (!res.ok || !data?.token) {
+      // 성공 판정을 res.ok 로만 한다. **응답에 토큰이 없는 것이 정상이다** —
+      // 서버가 httpOnly 쿠키로만 내려주므로 화면은 토큰을 보지 못한다.
+      if (!res.ok) {
         setError(data?.message ?? "아이디 또는 비밀번호가 올바르지 않습니다.");
         setShake(true);
         setTimeout(() => setShake(false), 500);
         return;
       }
 
-      // 보호된 API 호출에 쓸 토큰. 만료(기본 60분)되면 다시 로그인해야 한다.
-      try {
-        localStorage.setItem("jsp.token", data.token);
-      } catch {
-        // 사생활 보호 모드 등에서 저장이 막혀도 이동 자체는 막지 않는다.
-      }
       setSuccess("로그인되었습니다. 대시보드로 이동합니다...");
       setTimeout(() => router.push("/dashboard"), 900);
     } catch {

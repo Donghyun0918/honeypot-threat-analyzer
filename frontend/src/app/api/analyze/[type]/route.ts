@@ -4,16 +4,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { 분석서비스 } from "@/lib/llm-service";
 import { 프롬프트맵 } from "@/lib/prompts";
+import { 추론관문통과 } from "@/lib/추론관문";
 import type { 공격로그입력 } from "@/types/input";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ type: string }> }
 ) {
+  // 인증·쿼터·동시 실행을 먼저 본다 — 스트리밍 쪽과 같은 관문이다.
+  const 관문 = await 추론관문통과(req);
+  if (!관문.통과) return 관문.응답;
+
   const { type } = await params;
   const 분석유형 = decodeURIComponent(type);
 
   if (!(분석유형 in 프롬프트맵) && 분석유형 !== "전체리포트") {
+    관문.해제();
     return NextResponse.json(
       { error: `알 수 없는 분석 유형: ${분석유형}` },
       { status: 400 }
@@ -27,5 +33,8 @@ export async function POST(
     return NextResponse.json(결과);
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
+  } finally {
+    // 성공·실패 어느 쪽이든 슬롯을 돌려놓는다.
+    관문.해제();
   }
 }

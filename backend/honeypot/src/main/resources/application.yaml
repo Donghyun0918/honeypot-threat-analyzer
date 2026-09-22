@@ -8,6 +8,13 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: false
+    # REST API 에는 필요 없다. 켜두면 영속성 컨텍스트와 DB 커넥션을 응답이
+    # 끝날 때까지 붙들고, 기동할 때마다 경고가 뜬다.
+    #
+    # 끄면 트랜잭션 밖에서 지연 로딩이 안 되므로 그에 의존하던 곳을 고쳐야 한다 —
+    # ProjectService 의 읽기 메서드가 그랬다(ProjectResponse 가 LAZY 인
+    # Project.user 를 읽는다). 거기에 @Transactional 경계를 넣었다.
+    open-in-view: false
 
 server:
   port: 8080
@@ -17,8 +24,11 @@ fastapi:
   url: ${FASTAPI_URL:}
   enabled: ${FASTAPI_ENABLED:true}
 
+# 서비스 간 호출용 공유 비밀. 비워두면 기동 시 임의 값을 만들고 경고를 남긴다
+# (그러면 외부 수집기가 붙지 못한다 — 의도한 동작이다).
+# 고정값을 기본으로 두면 저장소를 읽은 사람 누구나 공격 로그를 밀어넣을 수 있다.
 internal:
-  service-token: ${INTERNAL_SERVICE_TOKEN:honeypot-internal-token}
+  service-token: ${INTERNAL_SERVICE_TOKEN:}
 
 # JWT 서명 키. 비워두면 기동 시 임의 키를 만들고 경고를 남긴다
 # (재기동하면 기존 토큰이 무효). 운영에서는 반드시 설정할 것:

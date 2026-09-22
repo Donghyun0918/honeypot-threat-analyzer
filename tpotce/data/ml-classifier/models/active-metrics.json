@@ -1,14 +1,53 @@
 {
-  "_comment": "현재 ml-classifier 가 실제로 쓰는 분류기를 서술한다. /api/model 이 MODEL_METRICS_PATH 로 읽는다. 학습 모델을 models/ 최상위에 되돌리면 dataset/work/models/metrics.json 을 대신 마운트할 것.",
-  "algorithm": "rule",
-  "split_method": null,
+  "_comment": "활성 모델 요약. /api/model 이 MODEL_METRICS_PATH 로 읽는다. 규칙과 교차검증하는 역할이므로 화면 문구도 그에 맞춘다.",
+  "_model": "v5 — 실 ES 문서(logstash-*) 250,000행 학습, 2026-09-14",
+  "_note": "아래 accuracy/macro_f1/cv 는 학습셋 내부 분할 수치다. 라벨이 규칙에서 나오므로 '규칙을 외웠다'는 뜻이고 학습 분포 안에서만 유효하다. 실제 일반화는 holdout_vs_rule 을 볼 것 (DATASET_FINDINGS.md §6).",
+  "algorithm": "lgbm",
+  "split_method": "stratified_80_20",
   "multi": {
-    "accuracy": null,
-    "macro_f1": null,
-    "labels": ["Recon", "Brute Force", "Malware", "Intrusion", "Etc"]
+    "accuracy": 0.9995,
+    "macro_f1": 0.9981,
+    "labels": [
+      "Brute Force",
+      "Etc",
+      "Intrusion",
+      "Malware",
+      "Recon"
+    ]
   },
-  "cv": {},
-  "n_train": 0,
-  "n_test": 0,
-  "n_features": 16
+  "cv": {
+    "cv_folds": 5,
+    "cv_acc_mean": 0.9997,
+    "cv_acc_std": 0.0,
+    "cv_f1_mean": 0.9988,
+    "cv_f1_std": 0.0002
+  },
+  "n_train": 200000,
+  "n_test": 50000,
+  "n_features": 16,
+  "holdout_vs_rule": {
+    "_comment": "학습에 쓰지 않은 실 문서(04-30 이후) 200,000건에서 규칙 라벨과의 합의율",
+    "_measured": "2026-09-15 재측정. 이전 92.5%/91.7% 는 홀드아웃 CSV 가 학습과 다른 인코더(enc_holdout.json)로 만들어져 event_type 코드 22개가 어긋난 결과였다 — 20만 행 중 6만 행이 잘못된 코드로 들어갔다.",
+    "n": 200000,
+    "micro": 0.999,
+    "macro": 0.992,
+    "per_label": {
+      "Brute Force": 0.988,
+      "Etc": 1.0,
+      "Intrusion": 0.973,
+      "Malware": 1.0,
+      "Recon": 1.0
+    }
+  },
+  "live_agreement": {
+    "_comment": "실제 추론 경로에서의 합의율. ml-analysis-* 전량 재분류 후 집계이며 CSV 왕복이 없어 인코더 불일치가 생길 수 없다. 모델 비교의 기준은 이쪽이다.",
+    "n": 1028698,
+    "agree": 1026528,
+    "dissent": 2170,
+    "rate": 0.998,
+    "superseded_v4": {
+      "dissent": 127137,
+      "rate": 0.876
+    }
+  }
 }

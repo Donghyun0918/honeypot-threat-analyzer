@@ -85,9 +85,13 @@ else
   # JWT 서명 키는 사람마다 달라야 한다. 비어 있으면 기동할 때마다 임의 키가
   # 만들어져 재기동 시 로그인이 풀린다.
   secret=$(openssl rand -base64 48 2>/dev/null | tr -d '\n' || head -c 48 /dev/urandom | base64 | tr -d '\n')
+  # 서비스 간 호출용 공유 비밀도 사람마다 달라야 한다. 고정값을 쓰면
+  # 저장소를 읽은 사람 누구나 /api/internal/** 로 공격 로그를 밀어넣을 수 있다.
+  itoken=$(openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')
   tmp=$(mktemp)
-  sed "s|^JWT_SECRET=.*|JWT_SECRET=${secret}|" .env > "$tmp" && mv "$tmp" .env
-  ok ".env 생성 + JWT 서명 키 발급"
+  sed -e "s|^JWT_SECRET=.*|JWT_SECRET=${secret}|" \
+      -e "s|^INTERNAL_SERVICE_TOKEN=.*|INTERNAL_SERVICE_TOKEN=${itoken}|" .env > "$tmp" && mv "$tmp" .env
+  ok ".env 생성 + JWT 서명 키 · 내부 서비스 토큰 발급"
 fi
 
 # compose 가 파일 단위로 마운트하는 경로는 미리 있어야 한다.
@@ -96,6 +100,32 @@ mkdir -p tpotce/data/ml-classifier/models tpotce/data/threat-console
 [ -f tpotce/data/ml-classifier/models/active-metrics.json ] \
   || die "tpotce/data/ml-classifier/models/active-metrics.json 이 없습니다. 저장소를 다시 받으세요."
 ok "마운트 경로 확인"
+
+# 학습된 모델은 저장소에 없다(.gitignore: data/ml-classifier/models/*).
+# 없으면 분류기가 규칙만으로 돌면서 조용히 넘어가는데, 지표 파일은 추적되므로
+# **화면은 "LightGBM 99.9%" 라고 말한다.** 없는 모델을 있다고 하는 셈이라
+# 여기서 먼저 알린다.
+if [ -f tpotce/data/ml-classifier/models/multi_model.pkl ]; then
+  ok "교차검증 모델 확인"
+else
+  warn "교차검증 모델(multi_model.pkl)이 없습니다 — 분류는 규칙만으로 동작합니다."
+  say "${C_DIM}  대시보드 모델 카드는 지표 파일을 읽으므로 모델이 있는 것처럼 보입니다.${C_OFF}"
+  say "${C_DIM}  모델을 받으려면 배포자에게 tpotce/data/ml-classifier/models/ 를 요청하세요.${C_OFF}"
+fi
+
+# 시연 데이터 주입 스크립트의 위치는 배치에 따라 다르다.
+#   · 개발 트리: capstone-dev 의 **바깥**(../integration-tests)
+#   · 공개 저장소: 저장소 루트의 옆(./integration-tests)
+# 한쪽만 보면 다른 배치에서 6단계가 조용히 건너뛰어진다 — 스크립트가 없는 것과
+# 데이터를 안 넣기로 한 것이 구분되지 않는다.
+if [ -d ./integration-tests ]; then
+  TESTS_DIR=./integration-tests
+elif [ -d ../integration-tests ]; then
+  TESTS_DIR=../integration-tests
+else
+  TESTS_DIR=""
+  warn "integration-tests 를 찾지 못했습니다 — 6단계 시연 데이터 주입을 건너뜁니다."
+fi
 
 # ─────────────────────────────────────────────────────────────────────────────
 head_ "3. 이미지 빌드 (처음이면 5~15분)"
@@ -120,33 +150,69 @@ for i in $(seq 1 40); do
   code=$(curl -sS -m 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8091/api/health 2>/dev/null || echo 000)
   if [ "$code" = "200" ]; then ok "백엔드 응답"; break; fi
   sleep 3
-  [ "$i" = "40" ] && warn "백엔드가 아직 응답하지 않습니다. docker compose logs profiling-service 를 확인하세요."
+  [ "$i" = "40" ] && warn "백엔드가 아직 응답하지 않습니다. docker compose logs backend 를 확인하세요."
 done
 
 # ─────────────────────────────────────────────────────────────────────────────
 head_ "5. LLM 모델"
+
+# 태그의 파라미터 수에서 내려받기 크기를 어림한다. ollama 기본 양자화(Q4)가
+# 1B 당 약 0.6GB 다 — exaone3.5:7.8b 4.8GB, qwen2.5:3b 1.9GB 로 실측과 맞는다.
+# 태그에서 못 읽으면 크기를 아예 말하지 않는다(틀린 숫자보다 낫다).
+model_size_hint() {
+  local params
+  params=$(printf '%s' "${1#*:}" | grep -oE '^[0-9]+(\.[0-9]+)?[bB]' | tr -dc '0-9.') || return 1
+  [ -n "$params" ] || return 1
+  awk -v p="$params" 'BEGIN{ printf "%.1f", p * 0.6 }'
+}
+
 model=$(grep -E '^LLM_MODEL=' .env | cut -d= -f2- || true)
 model=${model:-qwen2.5:3b}
-if docker exec dev-ollama ollama list 2>/dev/null | grep -q "${model%%:*}"; then
+
+# 이름+태그를 정확히 맞춘다. 예전엔 태그를 떼고(${model%%:*}) 부분 일치로 봤는데,
+# 그러면 qwen2.5:7b 가 있을 때 qwen2.5:3b 도 "준비됨" 으로 통과한다.
+if docker exec dev-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "$model"; then
   ok "${model} 준비됨"
 else
-  say "${C_DIM}${model} 내려받는 중(약 2GB, 몇 분 걸립니다)…${C_OFF}"
-  docker exec dev-ollama ollama pull "$model" 2>&1 | tail -1 | sed 's/^/  /' \
-    || warn "모델 다운로드 실패 — 나중에 'docker exec dev-ollama ollama pull ${model}' 로 다시 시도하세요."
+  size_hint=$(model_size_hint "$model" || true)
+  if [ -n "${size_hint:-}" ]; then
+    say "${C_DIM}${model} 내려받는 중(약 ${size_hint}GB, 몇 분 걸립니다)…${C_OFF}"
+  else
+    say "${C_DIM}${model} 내려받는 중(몇 분 걸립니다)…${C_OFF}"
+  fi
+  if docker exec dev-ollama ollama pull "$model" 2>&1 | tail -1 | sed 's/^/  /'; then
+    actual=$(docker exec dev-ollama ollama list 2>/dev/null \
+             | awk -v m="$model" '$1 == m { print $3 " " $4 }' || true)
+    ok "${model} 준비됨${actual:+ (${actual})}"
+  else
+    warn "모델 다운로드 실패 — 나중에 'docker exec dev-ollama ollama pull ${model}' 로 다시 시도하세요."
+  fi
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-if [ "$SEED" = "1" ]; then
+if [ "$SEED" = "1" ] && [ -n "$TESTS_DIR" ]; then
   head_ "6. 시연 데이터"
   if command -v python3 >/dev/null 2>&1; then
-    python3 ./integration-tests/inject_sample_docs.py --host http://127.0.0.1:19300 --count 80 2>&1 | sed 's/^/  /'
+    # 주입 전 건수를 먼저 기억한다. 예전엔 ml-analysis-* 전체가 60건 이상인지만
+    # 봤는데, 그러면 이미 데이터가 쌓인 스택에서는 주입분이 분류되기도 전에
+    # 즉시 통과한다("1028698건 분류됨"). 검증이 아니라 통과 선언이었다.
+    seed_count=80
+    before=$(curl -sS -m 3 "http://127.0.0.1:19300/ml-analysis-*/_count" 2>/dev/null \
+             | sed -n 's/.*"count":\([0-9]*\).*/\1/p' || echo 0)
+    before=${before:-0}
+    python3 "$TESTS_DIR/inject_sample_docs.py" --host http://127.0.0.1:19300 --count "$seed_count" 2>&1 | sed 's/^/  /'
     say "${C_DIM}분류 대기…${C_OFF}"
+    # 분류기는 POLL_INTERVAL(기본 30초) 주기라 2분이면 넉넉하다.
+    target=$(( before + seed_count ))
+    classified=0
     for i in $(seq 1 24); do
       n=$(curl -sS -m 3 "http://127.0.0.1:19300/ml-analysis-*/_count" 2>/dev/null \
           | sed -n 's/.*"count":\([0-9]*\).*/\1/p' || echo 0)
-      if [ "${n:-0}" -ge 60 ]; then ok "${n}건 분류됨"; break; fi
+      n=${n:-0}
+      if [ "$n" -ge "$target" ]; then classified=1; ok "주입 ${seed_count}건 분류 완료 (${before} → ${n})"; break; fi
       sleep 5
     done
+    [ "$classified" = "1" ] || warn "2분 안에 주입분이 다 분류되지 않았습니다 (${before} → ${n:-?}, 기대 ${target}). docker compose logs ml-classifier 를 확인하세요."
     curl -sS -m 10 -X POST http://127.0.0.1:8091/api/users/signup \
       -H 'Content-Type: application/json' \
       -d '{"email":"demo@jsp.test","password":"demo1234","name":"시연"}' >/dev/null 2>&1 || true
@@ -165,7 +231,7 @@ cat <<'EOF'
   Elasticsearch  http://localhost:19300
 
   실시간 공격 아크를 보려면 별도 터미널에서:
-    python3 ./integration-tests/demo_feed.py --host http://127.0.0.1:19300
+    python3 "$TESTS_DIR/demo_feed.py" --host http://127.0.0.1:19300
 
   스택 내리기:  docker compose down
   로그 보기  :  docker compose logs -f <서비스명>

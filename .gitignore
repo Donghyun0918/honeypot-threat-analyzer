@@ -48,3 +48,18 @@ tpotce/.env
 .idea/
 .vscode/
 *.log
+
+# ── 데이터 (2026-09-22) ────────────────────────────────────────────────────
+# 원본 공격 로그와 학습 데이터셋은 저장소에 두지 않는다 — 실제 공격자 IP,
+# 자격증명 시도, SSH 세션 기록이 들어 있는 제3자 데이터다.
+# 학습된 모델(models/*.pkl, encoders.json)은 파생 산출물이라 포함한다.
+logs/
+logs-staged/
+tpotce/data/ml-classifier/dataset/
+tpotce/data/ml-classifier/work-real/
+tpotce/data/ml-classifier/cursor.json
+tpotce/data/ml-classifier/heartbeat
+
+# 백업(계정 해시 포함) · 세션 설정
+backups/
+.claude/

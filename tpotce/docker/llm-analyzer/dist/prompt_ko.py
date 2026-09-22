@@ -112,6 +112,128 @@ def build_prompt(doc: dict, ask_severity: bool = False) -> str:
 # instead: a hit is raised as a parse error, which the daemon's existing retry
 # path handles, and a persistent failure lands on the deterministic fallback
 # prose rather than shipping mixed-script text to the dashboard.
+GROUP_FIELDS = ("honeypot", "ml_label", "dest_port")
+
+# 리눅스 임시 포트 범위의 시작. 이 위로는 "공격자가 노린 서비스"가 아니라
+# 그때그때 배정된 번호라, 포트 값을 그대로 키에 넣으면 그룹이 잘게 쪼개진다.
+EPHEMERAL_PORT_MIN = 32768
+
+
+def _port_bucket(value) -> str:
+    """포트를 그룹 키 조각으로. 임시 포트는 하나로 접는다.
+
+    실측(고위험 45,075건): 포트를 원값 그대로 쓰면 그룹이 1,400개인데 그중
+    1,287개(92%)가 1건짜리다 — `Suricata|Intrusion|33414`, `|35532`, `|37352`
+    처럼 임시 포트가 만들어낸 껍데기다. 이 그룹들은 전체의 2.86% 인데 해설
+    호출의 92% 를 먹는다.
+
+    접고 나면 **74개**가 된다(99.84% 절감). 6379(Redis)·3306(MySQL)·
+    27017(MongoDB)·1433(MSSQL) 같은 서비스 포트는 32768 미만이라 그대로
+    남는다 — 그것까지 묶으면 "Redis 침입" 과 "무작위 포트 스캔" 이 한 해설을
+    쓰게 되어 내용이 뭉개진다. 1024 기준으로 접었을 때 실제로 그랬다.
+    """
+    if value in (None, ""):
+        return "-"
+    try:
+        port = int(value)
+    except (TypeError, ValueError):
+        return str(value)
+    return "ephemeral" if port >= EPHEMERAL_PORT_MIN else str(port)
+
+
+def group_key(doc: dict) -> str:
+    """이 문서가 속한 **공격 패턴**의 키.
+
+    같은 허니팟에 같은 라벨로 같은 서비스를 두드리는 사건은 서사가 같다.
+    실측: 고위험 45,075건이 74개 그룹이고 상위 2개(둘 다 포트 445)가 89.8% 를
+    덮는다. 건당 해설하면 같은 이야기를 4만 번 쓰는 셈이고 61초씩 31.8일이
+    드는데, 그룹 단위면 75분이다.
+
+    ``mitre_score`` 를 키에 넣지 않는 이유: 점수는 라벨에서 파생되므로
+    ``ml_label`` 이 같으면 항상 같다. 넣어도 그룹이 갈리지 않는다.
+    """
+    honeypot = doc.get("honeypot")
+    label = doc.get("ml_label")
+    return "|".join([
+        str(honeypot) if honeypot not in (None, "") else "-",
+        str(label) if label not in (None, "") else "-",
+        _port_bucket(doc.get("dest_port")),
+    ])
+
+
+def build_group_prompt(doc: dict, ask_severity: bool = False) -> str:
+    """패턴 단위 프롬프트 — **공격자 IP 와 발생 시각을 넣지 않는다.**
+
+    건별 프롬프트(:func:`build_prompt`)는 IP 와 시각을 주입하고, 모델은 그걸
+    본문에 그대로 박는다("2026년 5월 1일 …, 공격자 IP 203.0.113.99가 …").
+    그 문장을 같은 그룹의 다른 사건에 재사용하면 **IP 와 시각이 전부 틀린다** —
+    이 프로젝트가 쫓아온 조용한 실패와 같은 종류다.
+
+    그래서 해설은 "이 유형의 공격이 무엇인가" 만 쓰게 하고, 사건별 구체값
+    (IP·시각·포트)은 문서의 구조화 필드에 이미 있으므로 화면이 그쪽을 읽는다.
+    모델이 IP 를 아예 보지 못하므로 지어낼 수도 없다.
+    """
+    honeypot = _fmt(doc.get("honeypot"))
+    honeypot_desc = _HONEYPOT_KO.get(str(doc.get("honeypot") or "").lower(), "허니팟")
+    technique = doc.get("mitre_technique")
+    technique_s = ", ".join(technique) if isinstance(technique, list) else _fmt(technique, "미분류")
+
+    # 포트도 그룹 키와 같은 규칙으로 쓴다. 대표 문서의 실제 포트를 그대로
+    # 넣으면 임시 포트 그룹에서 모델이 "포트 44930 을 통해" 라고 쓰고, 그 문장이
+    # 같은 그룹의 나머지 207건에 붙어 **전부 틀린 번호**가 된다 —
+    # IP·시각을 뺀 것과 정확히 같은 이유다.
+    bucket = _port_bucket(doc.get("dest_port"))
+    port_desc = ("임시 포트(32768 이상, 사건마다 다름)" if bucket == "ephemeral"
+                 else _fmt(doc.get("dest_port")))
+
+    if ask_severity:
+        severity_rule = (
+            '3. "severity" — LOW, MEDIUM, HIGH, CRITICAL 중 하나.\n'
+            "   **이 유형은 이미 고위험으로 선별된 것입니다.**\n"
+            "   MITRE 위협 점수 기준을 반드시 지키십시오: 90점 이상은 CRITICAL,\n"
+            "   70점 이상은 HIGH, 40점 이상은 MEDIUM. 이보다 낮게 매기지 마십시오.\n"
+            '4. "risk_score" — 0에서 10 사이의 숫자. severity와 모순되지 않게.\n'
+        )
+        severity_json = '\n  "severity": "LOW|MEDIUM|HIGH|CRITICAL",\n  "risk_score": 0,'
+        tail_no = "5"
+    else:
+        severity_rule = ""
+        severity_json = ""
+        tail_no = "3"
+
+    return f"""당신은 한국어로 보고하는 침해대응(CERT) 분석가입니다.
+아래는 허니팟에서 반복 관측되는 **공격 유형**입니다. 개별 사건이 아니라
+이 유형 전체에 대한 설명을 지정된 JSON 형식으로만 작성하십시오.
+
+[공격 유형]
+- 탐지 허니팟: {honeypot} ({honeypot_desc})
+- 대상 포트: {port_desc}
+- ML 분류 라벨: {_fmt(doc.get("ml_label"), "미분류")}
+- MITRE 위협 점수: {_fmt(doc.get("mitre_score"), "0")}/100
+- MITRE 기법(1차 추정): {technique_s}
+
+[작성 지침]
+1. "summary_ko" — 비전문가 관리자도 이해할 수 있는 1~3문장 한국어 요약.
+   이 포트와 허니팟 조합에서 공격자가 **무엇을 노리고 무엇을 시도하는지**를
+   쓰십시오. 특정 IP·특정 시각·특정 포트 번호는 언급하지 마십시오 — 이 설명은
+   같은 유형의 여러 사건에 함께 쓰이며, 사건별 IP·포트·시각은 화면이 따로
+   보여줍니다. 대상 포트가 "임시 포트" 로 주어졌다면 번호를 지어내지 마십시오.
+2. "solution_ko" — 즉시 취할 수 있는 대응 조치를 1~3문장 한국어로.
+   "모니터링하십시오" 같은 일반론 대신 실행 가능한 조치를 쓰십시오.
+{severity_rule}{tail_no}. "ttp_inferred" — 추정되는 MITRE ATT&CK 기법 ID 배열 (예: ["T1110", "T1059"]).
+   근거가 없으면 빈 배열로 두십시오. 기법 ID 형식만 쓰고 설명은 넣지 마십시오.
+
+[언어 규칙]
+- 한국어와 영문 기술 용어만 쓰십시오. 한자를 쓰지 마십시오.
+- JSON 외의 문장을 덧붙이지 마십시오.
+
+{{
+  "summary_ko": "한국어 요약",
+  "solution_ko": "한국어 대응 방안",{severity_json}
+  "ttp_inferred": ["T0000"]
+}}"""
+
+
 def _has_cjk(text: str) -> bool:
     return any("\u4e00" <= ch <= "\u9fff" for ch in text)
 

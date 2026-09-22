@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { 인증fetch, 토큰읽기, 토큰지우기 } from "@/lib/auth";
+import { 인증fetch, 로그아웃 } from "@/lib/auth";
 import * as d3 from "d3";
 import type { 공격로그입력 } from "@/types/input";
 import {
@@ -21,6 +21,44 @@ type 모델정보타입 = {
   accuracy: number | null; macro_f1: number | null;
   cv_acc_mean: number | null; cv_acc_std: number | null;
   labels: string[]; n_total: number; n_features: number | null;
+  // 학습에 쓰지 않은 실 문서에서의 규칙 합의율. accuracy/macro_f1 은 학습셋
+  // 내부 분할이라 99.9% 가 나오지만 그건 "규칙을 외웠다"는 뜻이다. 화면에는
+  // 이쪽을 먼저 내보낸다 (DATASET_FINDINGS.md §6).
+  holdout_n: number | null; holdout_micro: number | null; holdout_macro: number | null;
+};
+
+// 공격 패턴 단위 해설 (/api/llm-patterns)
+//
+// llm-analyzer 는 패턴당 한 번만 해설한다. 그래서 건별 목록을 그대로 그리면
+// 같은 문단이 수백 줄 반복된다 — 파이프라인은 패턴 단위로 갔는데 화면만 건별로
+// 남는 것이다. 접어서 보여주면 반복이 사라지고, 동시에 "4만 건이 실은 수십 개
+// 패턴" 이라는 이 프로젝트의 측정 결과가 화면에 그대로 드러난다.
+type 패턴타입 = {
+  키: string; 레거시?: boolean; 허니팟: string; 라벨: string; 포트: string;
+  건수: number; 공격IP수: number; 최근: string | null;
+  위험등급: string | null; 위협점수: number | null;
+  요약: string; 대응: string; 기법: string[];
+};
+
+// 내 자산 노출 대조 (/api/exposure)
+//
+// 허니팟 데이터는 "우리 대역을 노리는 공격" 이지 "우리가 뚫렸다" 가 아니다.
+// 열어둔 포트를 대면 비로소 내 얘기가 된다 — 노린 공격이 몇 건인지, 그중
+// 고위험이 몇 건인지, 몇 명이 두드렸는지.
+// 이미 만들어둔 해설 (/api/llm-explain)
+//
+// llm-analyzer 는 패턴당 한 번만 모델을 부르지만 결과는 사건마다 남긴다.
+// 그래서 고위험 사건 대부분은 고르는 즉시 **추론 없이 0초에** 해설이 나온다.
+// 모델을 다시 부르는 건 해설이 없거나 더 깊은 리포트를 원할 때뿐이다.
+type 해설타입 = {
+  found: boolean; 요약: string; 대응: string;
+  위험등급: string | null; 기법: string[]; 패턴키: string | null;
+  공유: boolean; 모델: string | null;
+};
+
+type 노출타입 = {
+  포트: number; 공격: number; 고위험: number;
+  공격IP수: number; 최고점수: number; 주라벨: string | null; 위험: boolean;
 };
 
 // ── 표시용 헬퍼 (실 T-Pot 공격로그) ───────────────────────────────────────────
@@ -95,6 +133,16 @@ export default function DashboardPage() {
   // 화면이 650px 를 차지하므로 접어둔다(사용자가 필요할 때 펼친다).
   const [맵펼침, set맵펼침] = useState(false);
   const [사용자, set사용자] = useState<string | null>(null);
+  const [교차검증, set교차검증] = useState<{ 모델관여: number; 합의: number; 불일치: number; 저신뢰: number; 합의율: number | null } | null>(null);
+  const [패턴, set패턴] = useState<{ 패턴목록: 패턴타입[]; 패턴수: number; 사건합계: number; 건당덮는수: number | null } | null>(null);
+  // 자산 포트는 계정에 딸려 있다(/api/assets). 기기를 바꿔도 따라오고,
+  // 같은 센서를 여러 사람이 공유하는 형태에서 대조만 개인별이 된다.
+  // 민감한 목록이므로 본인 것만 오간다 — 경로에 사용자 id 가 없다.
+  const [자산입력, set자산입력] = useState("");
+  const [자산저장중, set자산저장중] = useState(false);
+  const [해설, set해설] = useState<해설타입 | null>(null);
+  const [해설조회중, set해설조회중] = useState(false);
+  const [노출, set노출] = useState<{ 노출목록: 노출타입[]; 위험포트수: number; 해당이벤트: number } | null>(null);
   const router = useRouter();
   const [필터, set필터] = useState<"all" | "attacks" | "highrisk" | "llm">("all");
   const [분석중, set분석중] = useState(false);
@@ -119,13 +167,10 @@ export default function DashboardPage() {
   const 바차트SVGRef = useRef<SVGSVGElement | null>(null);
 
   // ── 로그인 확인 ─────────────────────────────────────────────────────────
-  // 토큰이 localStorage 에 남아 있어도 만료됐거나 서명 키가 바뀌었으면 무효다.
-  // 값의 존재만으로 판단하지 않고 서버에 한 번 물어본다.
+  // 세션은 httpOnly 쿠키라 화면에서 읽을 수 없다. 그래서 **서버에 물어보는 것이
+  // 유일한 방법이고, 동시에 가장 정확한 방법이다** — 전에는 localStorage 에 값이
+  // 있는지로 먼저 걸렀는데 그건 만료도 서명 키 교체도 알지 못하는 검사였다.
   useEffect(() => {
-    if (!토큰읽기()) {
-      router.replace("/login");
-      return;
-    }
     인증fetch("/api/auth/me")
       .then(async (r) => {
         if (!r.ok) throw new Error("만료");
@@ -133,7 +178,6 @@ export default function DashboardPage() {
         set사용자(d.email ?? null);
       })
       .catch(() => {
-        토큰지우기();
         router.replace("/login");
       });
   }, [router]);
@@ -171,6 +215,61 @@ export default function DashboardPage() {
         high_risk: d.high_risk ?? 0,
         llm_analyzed: d.llm_analyzed ?? 0,
       }))
+      .catch(() => {});
+  }, []);
+
+  // ── 모델·규칙 교차검증 현황 ────────────────────────────────────────────
+  // 학습 지표(holdout)는 학습 분포 안에서만 유효하다. 운영에서 의미 있는 건
+  // "지금 들어오는 문서에 대해 모델이 규칙과 얼마나 합의하는가" 이다.
+  useEffect(() => {
+    인증fetch("/api/ml-stats")
+      .then((r) => r.json())
+      .then((d) => { if (d?.교차검증?.모델관여 > 0) set교차검증(d.교차검증); })
+      .catch(() => {});
+  }, []);
+
+  // ── 공격 패턴 단위 해설 로드 (/api/llm-patterns) ───────────────────────────
+  useEffect(() => {
+    인증fetch("/api/llm-patterns?since=now-1y&size=8")
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d?.패턴목록) && d.패턴목록.length) set패턴(d); })
+      .catch(() => {});
+  }, []);
+
+  // ── 자산 포트 복원 (계정에서) ──────────────────────────────────────────────
+  useEffect(() => {
+    인증fetch("/api/assets")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && typeof d.rawText === "string" && d.rawText) { set자산입력(d.rawText); return; }
+        // 계정에 없으면 예전에 이 브라우저에 저장해둔 값을 한 번 끌어올린다.
+        // 다음 저장에서 계정으로 옮겨간다.
+        try {
+          const 옛값 = localStorage.getItem("자산포트");
+          if (옛값) set자산입력(옛값);
+        } catch { /* 접근이 막히면 빈 값으로 둔다 */ }
+      })
+      .catch(() => {});
+  }, []);
+
+  const 노출조회 = useCallback((입력: string) => {
+    const 포트들 = Array.from(new Set(
+      (입력.match(/\d{1,5}/g) ?? []).map(Number).filter((n) => n > 0 && n <= 65535),
+    )).slice(0, 100);
+
+    // 목록을 계정에 저장한다. 저장이 실패해도 조회는 막지 않는다 —
+    // 보려던 사람이 저장 오류 때문에 아무것도 못 보는 건 과하다.
+    set자산저장중(true);
+    인증fetch("/api/assets", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rawText: 입력 }),
+    }).catch(() => {}).finally(() => set자산저장중(false));
+
+    if (포트들.length === 0) { set노출(null); return; }
+    인증fetch(`/api/exposure?since=now-1y&ports=${포트들.join(",")}`)
+      .then((r) => r.json())
+      .then((d) => { if (Array.isArray(d?.노출목록)) set노출(d); })
       .catch(() => {});
   }, []);
 
@@ -322,6 +421,17 @@ export default function DashboardPage() {
       게이지그리기(a.위험점수);
       네트워크그래프그리기(a);
     }, 50);
+
+    // 이미 만들어둔 해설이 있으면 바로 보여준다. 추론을 부르지 않는다.
+    set해설(null);
+    const id = (a as unknown as { _doc_id?: string })._doc_id;
+    if (!id) return;
+    set해설조회중(true);
+    인증fetch(`/api/llm-explain?id=${encodeURIComponent(id)}`)
+      .then((r) => r.json())
+      .then((d: 해설타입) => { if (d?.found) set해설(d); })
+      .catch(() => {})
+      .finally(() => set해설조회중(false));
   }
 
   // ── 분석 시작 ────────────────────────────────────────────────────────────
@@ -344,12 +454,29 @@ export default function DashboardPage() {
     ]);
 
     try {
-      const res = await fetch("/api/analyze/stream", {
+      const res = await 인증fetch("/api/analyze/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 분석유형: "전체리포트", 로그: 선택공격 }),
       });
-      const reader = res.body!.getReader();
+
+      // 관문(인증·쿼터·동시 실행)이 막으면 본문은 스트림이 아니라 JSON 이다.
+      // 그대로 reader 를 열면 파싱이 조용히 실패해 "분석 중" 에서 멈춘 것처럼
+      // 보이므로, 왜 막혔는지를 화면에 그대로 보여준다.
+      if (!res.ok) {
+        const 사유 = await res.json().catch(() => ({ message: `요청이 거부되었습니다 (${res.status})` }));
+        set결과HTML(`<div class="오류박스">${String((사유 as { message?: string }).message ?? "분석을 시작할 수 없습니다.")}</div>`);
+        set분석중(false);
+        set커서보임(false);
+        return;
+      }
+      if (!res.body) {
+        set결과HTML(`<div class="오류박스">응답 본문이 비어 있습니다. 서버 상태를 확인해주세요.</div>`);
+        set분석중(false);
+        set커서보임(false);
+        return;
+      }
+      const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buf = "";
 
@@ -441,6 +568,12 @@ export default function DashboardPage() {
       }
       case "오류":
         set결과HTML(`<div class="오류박스">${ev.메시지}</div>`);
+        break;
+      // 모델 응답에 한자가 섞였거나 파싱이 깨져 대체 내용으로 채웠을 때.
+      // 오류와 달리 분석은 계속되므로 지금까지 나온 것을 지우지 않고 덧붙인다 —
+      // 사용자가 대체된 내용을 정상 결과로 읽지 않게 하는 게 목적이다.
+      case "경고":
+        set결과HTML((이전) => `${이전}<div class="경고박스">${ev.메시지}</div>`);
         break;
     }
   }
@@ -606,10 +739,69 @@ export default function DashboardPage() {
         .모델지표 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; text-align: center; }
         .모델지표값 { display: block; font-size: 1.3rem; font-weight: 800; color: var(--accent); }
         .모델지표라벨 { display: block; font-size: 0.7rem; color: var(--text-3); margin-top: 3px; }
+        .교차검증 { margin: 4px 0 12px; }
+        .교차행 { display: grid; grid-template-columns: 110px minmax(0,1fr) 52px; gap: 12px; align-items: center; }
+        .교차라벨 { font-size: 0.84rem; font-weight: 600; }
+        .교차막대 { height: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
+        .교차채움 { display: block; height: 100%; background: var(--accent); }
+        .교차값 { font-family: var(--mono); font-size: 0.86rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+        .교차설명 { font-size: 0.79rem; line-height: 1.6; color: var(--text-2); margin-top: 8px; }
         .모델설명 { font-size: 0.86rem; line-height: 1.65; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
         .모델배지-규칙 { background: #fdf2e3; color: #8a5a10; border-color: #e8c98d; }
         .모델라벨칩들 { display: flex; flex-wrap: wrap; gap: 6px; }
         .모델라벨칩 { font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
+        .해설카드 { display: flex; flex-direction: column; gap: 9px; padding: 14px 16px; }
+        .해설머리 { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+        .해설제목 { font-size: 0.86rem; font-weight: 700; color: var(--text); }
+        .해설꼬리표 { font-size: 0.68rem; font-weight: 600; padding: 2px 7px; border-radius: 20px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); }
+        .해설즉시 { margin-left: auto; font-size: 0.7rem; color: var(--green); font-weight: 600; }
+        .해설본문 { font-size: 0.85rem; line-height: 1.68; color: var(--text); }
+        .해설대응 { font-size: 0.8rem; line-height: 1.62; color: var(--text-2); background: var(--surface-3); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 9px 11px; }
+        .해설대응 b { color: var(--accent); font-weight: 700; }
+        .자산밴드 { max-width: 1760px; margin: 0 auto; padding: 16px 28px 0; }
+        .자산카드 { display: flex; flex-direction: column; gap: 12px; }
+        .자산입력줄 { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
+        .자산입력 { flex: 1 1 320px; max-width: 520px; min-width: 0; font-family: var(--mono); font-size: 0.82rem; line-height: 1.6; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); resize: vertical; min-height: 44px; }
+        .자산입력:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+        .자산버튼 { font-size: 0.8rem; font-weight: 600; padding: 9px 16px; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; }
+        .자산버튼:hover { filter: brightness(1.08); }
+        .자산결론 { font-size: 0.88rem; line-height: 1.6; color: var(--text-2); }
+        .자산결론 b { color: var(--red); font-variant-numeric: tabular-nums; }
+        .자산결론 b.무사 { color: var(--green); }
+        /* 전폭으로 퍼지면 포트와 값이 화면 양 끝으로 벌어져 눈이 못 따라간다. */
+        .노출표 { width: 100%; max-width: 780px; border-collapse: collapse; font-size: 0.84rem; }
+        .노출표 th { text-align: right; font-weight: 600; color: var(--text-3); font-size: 0.72rem; letter-spacing: .03em; padding: 6px 12px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
+        .노출표 th:first-child, .노출표 td:first-child { text-align: left; }
+        .노출표 td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); color: var(--text-2); }
+        .노출표 tr:last-child td { border-bottom: none; }
+        /* 고위험을 받고 있는 포트는 한눈에 갈라야 한다. */
+        .노출표 td:first-child { border-left: 3px solid transparent; }
+        .노출표 tr.위험 td:first-child { border-left-color: var(--red); }
+        .노출표 tr.위험 .노출고위험 { color: var(--red); font-weight: 700; }
+        .노출표 tr:not(.위험) .노출포트 { color: var(--text-3); font-weight: 600; }
+        .노출포트 { font-weight: 700; color: var(--text); font-size: 0.92rem; }
+        .패턴밴드 { max-width: 1760px; margin: 0 auto; padding: 16px 28px 0; }
+        .패턴헤더 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; margin-bottom: 12px; }
+        .패턴제목 { font-size: 1rem; font-weight: 700; color: var(--text); }
+        .패턴요지 { font-size: 0.8rem; color: var(--text-3); }
+        .패턴요지 b { color: var(--accent); font-variant-numeric: tabular-nums; }
+        /* 좁으면 한 줄에 서너 어절밖에 못 들어가 줄바꿈이 잦다. */
+        .패턴그리드 { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 12px; }
+        .패턴카드 { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 15px 17px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+        .패턴상단 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        /* 카드의 주 정보는 건수다. 제목처럼 세운다. */
+        .패턴건수 { font-size: 1.32rem; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
+        .패턴건수 span { font-size: 0.78rem; font-weight: 600; color: var(--text-3); margin-left: 2px; }
+        .패턴키 { font-family: var(--mono); font-size: 0.76rem; color: var(--text-2); }
+        .패턴곁수치 { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.75rem; color: var(--text-3); font-variant-numeric: tabular-nums; }
+        .패턴곁수치 b { font-family: var(--mono); font-weight: 600; color: var(--text-2); }
+        .패턴요약 { font-size: 0.86rem; line-height: 1.68; color: var(--text); }
+        /* 대응은 "지금 할 일" 이라 요약과 확실히 갈라야 한다. 배경색 차이만으로는
+           흰 카드 위에서 거의 안 보여서(surface-2 는 #f8fafc) 좌측 강조선을 쓴다. */
+        .패턴대응 { font-size: 0.82rem; line-height: 1.62; color: var(--text-2); background: var(--surface-3); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 10px 12px; }
+        .패턴대응 b { color: var(--accent); font-weight: 700; }
+        .패턴기법 { display: flex; flex-wrap: wrap; gap: 5px; }
+        .패턴기법 span { font-family: var(--mono); font-size: 0.68rem; padding: 2px 7px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); }
         .맵아이프레임 { width: 100%; height: 640px; border: none; border-radius: 10px; background: #020817; display: block; }
         @media (max-width: 900px) { .맵아이프레임 { height: 440px; } }
         .맵토글 { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.74rem; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 5px 11px; }
@@ -756,6 +948,7 @@ export default function DashboardPage() {
         .빈상태힌트 { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; text-align: left; width: 100%; max-width: 560px; }
         .힌트행 { display: flex; align-items: center; gap: 9px; font-size: 0.8rem; color: var(--text-2); line-height: 1.5; white-space: nowrap; }
         .힌트번호 { width: 19px; height: 19px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 0.66rem; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .경고박스 { font-size: 0.82rem; line-height: 1.6; color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber-border); border-radius: var(--radius-sm); padding: 9px 12px; margin: 8px 0; }
         .오류박스 { background: #fff1f2; border: 1px solid #fca5a5; border-radius: 12px; padding: 14px 16px; color: #dc2626; font-size: 0.85rem; line-height: 1.6; }
       `}</style>
 
@@ -779,7 +972,7 @@ export default function DashboardPage() {
               <span className="세션이메일">{사용자}</span>
               <button
                 className="로그아웃"
-                onClick={() => { 토큰지우기(); router.replace("/login"); }}
+                onClick={async () => { await 로그아웃(); router.replace("/login"); }}
               >
                 로그아웃
               </button>
@@ -856,9 +1049,33 @@ export default function DashboardPage() {
             </div>
           )}
 
+          {선택공격 && (해설 || 해설조회중) && (
+            <div className="카드 해설카드">
+              <div className="해설머리">
+                <span className="해설제목">한국어 해설</span>
+                {해설?.공유 && (
+                  <span className="해설꼬리표" title={해설.패턴키 ?? undefined}>
+                    이 유형 공통
+                  </span>
+                )}
+                <span className="해설즉시">저장된 결과 · 추론 없음</span>
+              </div>
+              {해설조회중 && !해설 && <p className="해설본문">불러오는 중…</p>}
+              {해설 && (
+                <>
+                  <p className="해설본문">{해설.요약}</p>
+                  {해설.대응 && <p className="해설대응"><b>대응</b> — {해설.대응}</p>}
+                  {해설.기법.length > 0 && (
+                    <div className="패턴기법">{해설.기법.map((t) => <span key={t}>{t}</span>)}</div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
           <button id="분석시작버튼" onClick={분석시작} disabled={분석중 || !선택공격}>
             {분석중 ? <span className="spinner" /> : <Search className="icon" />}
-            <span>{분석중 ? "AI가 분석하는 중..." : "AI 분석 시작"}</span>
+            <span>{분석중 ? "AI가 분석하는 중..." : 해설 ? "더 깊게 분석 (AI 호출)" : "AI 분석 시작"}</span>
           </button>
 
           {showPDF && (
@@ -1019,18 +1236,55 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+            {교차검증 && (
+              <div className="교차검증">
+                <div className="교차행">
+                  <span className="교차라벨">모델·규칙 합의</span>
+                  <span className="교차막대">
+                    <span className="교차채움" style={{ width: `${교차검증.합의율 ?? 0}%` }} />
+                  </span>
+                  <span className="교차값">{교차검증.합의율}%</span>
+                </div>
+                <div className="교차설명">
+                  최근 {교차검증.모델관여.toLocaleString()}건에서 모델이 규칙과 같은 답을 낸 비율입니다.
+                  {교차검증.불일치 > 0 && (
+                    <> 다른 답을 낸 <b>{교차검증.불일치}건</b>은 검토 대상으로 표시됩니다
+                    (라벨은 규칙을 따릅니다).</>
+                  )}
+                </div>
+              </div>
+            )}
             {규칙모드 ? (
               <div className="모델설명">
                 결정론적 규칙으로 판정하므로 정확도·F1 같은 학습 지표가 없습니다.
                 학습 모델은 현재 데이터에서 규칙보다 성능이 낮아 비활성 상태입니다.
               </div>
             ) : (
-              <div className="모델지표그리드">
-                <div className="모델지표"><span className="모델지표값">{(모델정보.accuracy! * 100).toFixed(1)}%</span><span className="모델지표라벨">정확도</span></div>
-                <div className="모델지표"><span className="모델지표값">{(모델정보.macro_f1! * 100).toFixed(1)}%</span><span className="모델지표라벨">Macro-F1</span></div>
-                <div className="모델지표"><span className="모델지표값">{모델정보.cv_acc_mean != null ? (모델정보.cv_acc_mean * 100).toFixed(1) + "%" : "—"}</span><span className="모델지표라벨">5-Fold CV</span></div>
-                <div className="모델지표"><span className="모델지표값">{모델정보.n_total.toLocaleString()}</span><span className="모델지표라벨">학습 샘플</span></div>
-              </div>
+              <>
+                <div className="모델지표그리드">
+                  {모델정보.holdout_micro != null ? (
+                    <>
+                      <div className="모델지표"><span className="모델지표값">{(모델정보.holdout_micro * 100).toFixed(1)}%</span><span className="모델지표라벨">규칙 재현</span></div>
+                      <div className="모델지표"><span className="모델지표값">{모델정보.holdout_macro != null ? (모델정보.holdout_macro * 100).toFixed(1) + "%" : "—"}</span><span className="모델지표라벨">Macro 평균</span></div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="모델지표"><span className="모델지표값">{(모델정보.accuracy! * 100).toFixed(1)}%</span><span className="모델지표라벨">정확도</span></div>
+                      <div className="모델지표"><span className="모델지표값">{(모델정보.macro_f1! * 100).toFixed(1)}%</span><span className="모델지표라벨">Macro-F1</span></div>
+                    </>
+                  )}
+                  <div className="모델지표"><span className="모델지표값">{모델정보.n_total.toLocaleString()}</span><span className="모델지표라벨">학습 샘플</span></div>
+                  <div className="모델지표"><span className="모델지표값">{모델정보.holdout_n != null ? 모델정보.holdout_n.toLocaleString() : "—"}</span><span className="모델지표라벨">검증 샘플</span></div>
+                </div>
+                {모델정보.holdout_micro != null && (
+                  <div className="모델설명">
+                    위 수치는 <b>학습에 쓰지 않은 실제 공격 문서 {모델정보.holdout_n?.toLocaleString()}건</b>에서
+                    모델이 규칙과 같은 답을 낸 비율입니다. 학습셋 내부 정확도는
+                    {" "}{(모델정보.accuracy! * 100).toFixed(1)}%지만, 정답 라벨을 규칙이 만들기 때문에
+                    그 숫자는 &ldquo;규칙을 외웠다&rdquo;는 뜻이라 일반화를 말해주지 못합니다.
+                  </div>
+                )}
+              </>
             )}
             <div className="모델라벨칩들">
               {모델정보.labels.map((l) => <span key={l} className="모델라벨칩">{라벨한글[l] ?? l}</span>)}
@@ -1039,6 +1293,116 @@ export default function DashboardPage() {
         </section>
         );
       })()}
+
+      {/* ── 내 자산 노출 대조 ── */}
+      <section className="자산밴드">
+        <div className="카드 자산카드">
+          <div>
+            <div className="패턴제목">내 자산 노출 대조</div>
+            <div className="패턴요지">
+              열어둔 포트를 적으면 그 포트가 실제로 얼마나 공격받고 있는지 대조합니다.
+              허니팟이 본 것은 &ldquo;우리 대역을 노리는 공격&rdquo;이지 &ldquo;우리가 뚫렸다&rdquo;가
+              아닙니다 — 포트를 대야 내 얘기가 됩니다.
+            </div>
+          </div>
+          <div className="자산입력줄">
+            <textarea
+              id="자산포트입력"
+              className="자산입력"
+              value={자산입력}
+              onChange={(e) => set자산입력(e.target.value)}
+              placeholder="웹서버 80, 443&#10;DB 3306, 5432&#10;파일서버 445"
+              aria-label="자산 포트 목록"
+              rows={2}
+            />
+            <button type="button" className="자산버튼" disabled={자산저장중}
+                    onClick={() => 노출조회(자산입력)}>
+              {자산저장중 ? "저장 중…" : "대조"}
+            </button>
+          </div>
+
+          {노출 && 노출.노출목록.length > 0 && (
+            <>
+              <p className="자산결론">
+                {노출.위험포트수 > 0 ? (
+                  <>열어둔 포트 중 <b>{노출.위험포트수}개</b>가 고위험 공격을 받고 있습니다.</>
+                ) : (
+                  <>열어둔 포트에서 <b className="무사">고위험 공격은 관측되지 않았습니다.</b></>
+                )}{" "}
+                최근 1년 · 해당 이벤트 {노출.해당이벤트.toLocaleString()}건.
+              </p>
+              <div style={{ overflowX: "auto" }}>
+                <table className="노출표">
+                  <thead>
+                    <tr>
+                      <th scope="col">포트</th><th scope="col">공격</th><th scope="col">고위험</th>
+                      <th scope="col">공격 IP</th><th scope="col">최고 점수</th><th scope="col">주 유형</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {노출.노출목록.map((n) => (
+                      <tr key={n.포트} className={n.위험 ? "위험" : undefined}>
+                        <td className="노출포트">{n.포트}</td>
+                        <td>{n.공격.toLocaleString()}</td>
+                        <td className="노출고위험">{n.고위험.toLocaleString()}</td>
+                        <td>{n.공격IP수.toLocaleString()}</td>
+                        <td>{n.최고점수}</td>
+                        <td>{n.주라벨 ? (라벨한글[n.주라벨] ?? n.주라벨) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="교차설명">
+                포트 목록은 <b>내 계정</b>에 저장됩니다. 다른 기기에서 로그인해도 따라오고,
+                다른 사용자는 볼 수 없습니다.
+              </p>
+            </>
+          )}
+        </div>
+      </section>
+
+      {/* ── 공격 패턴 (해설 단위) ── */}
+      {패턴 && 패턴.패턴목록.length > 0 && (
+        <section className="패턴밴드">
+          <div className="패턴헤더">
+            <span className="패턴제목">공격 패턴</span>
+            <span className="패턴요지">
+              고위험 <b>{패턴.사건합계.toLocaleString()}</b>건이{" "}
+              <b>{패턴.패턴수}</b>개 패턴입니다. 같은 패턴은 한 번만 해설하고 나눠 씁니다
+              {패턴.건당덮는수 ? <> — 해설 1건이 평균 <b>{패턴.건당덮는수}</b>건을 덮습니다</> : null}.
+            </span>
+          </div>
+          <div className="패턴그리드">
+            {패턴.패턴목록.map((p) => (
+              <article key={p.키} className="패턴카드">
+                <div className="패턴상단">
+                  <span className="패턴건수">{p.건수.toLocaleString()}<span>건</span></span>
+                  {p.위험등급 && (
+                    <span className={`위험배지 ${위험배지클래스[p.위험등급] ?? "보통"}`}>
+                      {p.위험등급}
+                    </span>
+                  )}
+                  <span className="패턴키">
+                    {p.레거시
+                      ? "패턴 재사용 이전에 건별로 해설된 문서"
+                      : <>{p.허니팟} · {라벨한글[p.라벨] ?? p.라벨} · 포트 {p.포트}</>}
+                  </span>
+                </div>
+                <div className="패턴곁수치">
+                  <span>공격 IP <b>{p.공격IP수.toLocaleString()}</b>개</span>
+                  {p.위협점수 != null && <span>위협 점수 <b>{p.위협점수}</b></span>}
+                </div>
+                {p.요약 && <p className="패턴요약">{p.요약}</p>}
+                {p.대응 && <p className="패턴대응"><b>대응</b> — {p.대응}</p>}
+                {p.기법.length > 0 && (
+                  <div className="패턴기법">{p.기법.map((t) => <span key={t}>{t}</span>)}</div>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── T-Pot 실시간 어택맵 (접기/펼치기) ── */}
       <section className="맵섹션">

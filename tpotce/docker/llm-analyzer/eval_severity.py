@@ -52,7 +52,11 @@ risk_score 는 대체로 점수를 10으로 나눈 값에 가깝게 매기십시
 
 
 def build(variant: str, doc: dict) -> str:
-    base = prompt_ko.build_prompt(doc)
+    # 이 하네스의 목적이 "모델이 severity 를 판정할 수 있는가" 이므로
+    # 반드시 물어보는 프롬프트를 써야 한다. build_prompt 의 기본값은
+    # ask_severity=False(운영 기본값)라 그대로 쓰면 묻지도 않고
+    # "답이 없다"고 세게 된다.
+    base = prompt_ko.build_prompt(doc, ask_severity=True)
     if variant == "current":
         return base
     if variant == "fewshot":

@@ -1,0 +1,389 @@
+<title>정사평 · 허니팟 공격 분석</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+
+<style>
+  /* 보고서·폼보드·대시보드가 쓰는 토큰을 그대로 잇는다. 이 사이트만의
+     아이덴티티를 새로 만들면 같은 프로젝트가 두 얼굴을 갖게 된다. */
+  :root {
+    --bg:#EEF1F5; --surface:#FFFFFF; --surface-2:#F6F8FA;
+    --line:#D3DAE3; --line-soft:#E3E8EE;
+    --ink:#141B24; --ink-2:#3D4A59; --muted:#66748A;
+    --accent:#0F6B78; --accent-soft:#E2EEF0;
+    --stop:#97362E; --stop-bg:#F6E4E1;
+    --ok:#23744F;
+    --shadow:0 1px 2px rgba(20,27,36,.06), 0 6px 18px -12px rgba(20,27,36,.22);
+    --sans:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --cond:"IBM Plex Sans Condensed", "IBM Plex Sans", ui-sans-serif, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#0E141B; --surface:#161E27; --surface-2:#1C252F;
+      --line:#2C3846; --line-soft:#232E3A;
+      --ink:#DFE6EE; --ink-2:#B3C0CE; --muted:#8797A9;
+      --accent:#55B7C4; --accent-soft:#16303563;
+      --stop:#E38A80; --stop-bg:#3A1F1C63;
+      --ok:#6BC79A;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#0E141B; --surface:#161E27; --surface-2:#1C252F;
+    --line:#2C3846; --line-soft:#232E3A;
+    --ink:#DFE6EE; --ink-2:#B3C0CE; --muted:#8797A9;
+    --accent:#55B7C4; --accent-soft:#16303563;
+    --stop:#E38A80; --stop-bg:#3A1F1C63;
+    --ok:#6BC79A;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -14px rgba(0,0,0,.7);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding-inline: 20px; }
+  section { padding-block: 72px; }
+  section + section { border-top: 1px solid var(--line-soft); }
+  .alt { background: var(--surface); }
+
+  h1, h2, h3 { font-family: var(--cond); text-wrap: balance; margin: 0; }
+  h1 { font-size: clamp(38px, 6.4vw, 66px); line-height: 1.08; letter-spacing: -.015em; }
+  h2 { font-size: clamp(25px, 3.4vw, 34px); line-height: 1.2; }
+  h3 { font-size: 19px; line-height: 1.35; }
+  p { margin: 0; }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--accent); font-weight: 500;
+  }
+  .lead { font-size: clamp(17px, 2vw, 20px); color: var(--ink-2); max-width: 62ch; }
+  .note { font-size: 14.5px; color: var(--muted); max-width: 66ch; }
+  .stack { display: flex; flex-direction: column; gap: 18px; }
+  .stack-s { display: flex; flex-direction: column; gap: 10px; }
+
+  /* ── 히어로 ── */
+  .hero { padding-block: clamp(56px, 9vw, 92px) 64px; }
+  .hero h1 { margin-block: 16px 20px; }
+  .hero .accent { color: var(--accent); }
+
+  /* 변환 데모 — 이 프로젝트가 하는 일 그 자체 */
+  .transform {
+    margin-top: 40px; display: grid; gap: 14px;
+    grid-template-columns: 1fr auto 1fr; align-items: stretch;
+  }
+  @media (max-width: 760px) { .transform { grid-template-columns: 1fr; } }
+  .pane {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 8px; padding: 18px; min-width: 0;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .pane.out { border-color: var(--accent); box-shadow: var(--shadow); }
+  .pane-h {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .pane.out .pane-h { color: var(--accent); }
+  .raw {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.7;
+    color: var(--ink-2); margin: 0; white-space: pre-wrap; word-break: break-all;
+  }
+  .raw b { color: var(--ink); font-weight: 600; }
+  .arrow {
+    display: grid; place-items: center; color: var(--accent);
+    font-family: var(--mono); font-size: 22px;
+  }
+  @media (max-width: 760px) { .arrow { transform: rotate(90deg); } }
+  .ko-sum { font-size: 15px; line-height: 1.7; }
+  .ko-act { font-size: 14px; color: var(--ink-2); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; padding: 3px 8px; border-radius: 4px;
+    background: var(--accent-soft); color: var(--accent); border: 1px solid var(--line-soft);
+  }
+  .chip.sev { background: var(--stop-bg); color: var(--stop); border-color: transparent; font-weight: 600; }
+
+  /* ── 지표 ── */
+  .kpis {
+    display: grid; gap: 1px; background: var(--line-soft);
+    border: 1px solid var(--line-soft); border-radius: 8px; overflow: hidden;
+    grid-template-columns: repeat(4, 1fr); margin-top: 34px;
+  }
+  @media (max-width: 860px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+  .kpi { background: var(--surface); padding: 18px 16px; display: flex; flex-direction: column; gap: 3px; }
+  .kpi .k { font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .kpi .v { font-family: var(--cond); font-size: 31px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .kpi .v em { font-style: normal; font-size: .55em; color: var(--muted); }
+  .kpi .s { font-size: 12.5px; color: var(--muted); }
+  .kpi.mark .v { color: var(--accent); }
+
+  /* ── 파이프라인 ── */
+  .pipe { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); margin-top: 32px; }
+  @media (max-width: 860px) { .pipe { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 480px) { .pipe { grid-template-columns: 1fr; } }
+  .step {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px; display: flex; flex-direction: column; gap: 7px;
+  }
+  .step .n {
+    font-family: var(--mono); font-size: 11px; color: var(--accent);
+    letter-spacing: .1em;
+  }
+  .step .t { font-family: var(--mono); font-size: 14px; font-weight: 600; }
+  .step p { font-size: 13.5px; color: var(--ink-2); line-height: 1.6; }
+  .step .m { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+  /* ── 발견 목록 ── */
+  .finds { display: grid; gap: 14px; grid-template-columns: repeat(2, 1fr); margin-top: 30px; }
+  @media (max-width: 760px) { .finds { grid-template-columns: 1fr; } }
+  .find { display: flex; flex-direction: column; gap: 8px; padding-left: 16px; border-left: 2px solid var(--accent); }
+  .find h3 { font-size: 17px; }
+  .find p { font-size: 14.5px; color: var(--ink-2); line-height: 1.68; }
+  .find .fig { font-family: var(--mono); font-size: 13px; color: var(--accent); font-variant-numeric: tabular-nums; }
+
+  /* ── 스택 태그 ── */
+  .tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 26px; }
+  .tag {
+    font-family: var(--mono); font-size: 12px; padding: 5px 10px;
+    border: 1px solid var(--line); border-radius: 5px; color: var(--ink-2);
+    background: var(--surface);
+  }
+  .tag b { color: var(--ink); font-weight: 600; }
+
+  /* ── 팀 ── */
+  .team { display: grid; gap: 14px; grid-template-columns: repeat(4, 1fr); margin-top: 30px; }
+  @media (max-width: 860px) { .team { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px) { .team { grid-template-columns: 1fr; } }
+  .member {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 16px 14px; display: flex; flex-direction: column;
+    align-items: center; text-align: center; gap: 7px;
+  }
+  .member .name { font-family: var(--cond); font-size: 21px; letter-spacing: -.01em; }
+  .lead-chip {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em;
+    padding: 2px 8px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); border: 1px solid var(--line-soft);
+  }
+  .scope-h {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .scope ul {
+    margin: 10px 0 0; padding: 0; list-style: none;
+    display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @media (max-width: 700px) { .scope ul { grid-template-columns: 1fr; } }
+  .scope li {
+    font-size: 14px; line-height: 1.6; color: var(--ink-2);
+    padding-left: 13px; border-left: 2px solid var(--line);
+  }
+  .scope li b { color: var(--ink); font-weight: 600; }
+
+  footer { padding-block: 40px 56px; border-top: 1px solid var(--line-soft); }
+  .foot-row { display: flex; flex-wrap: wrap; gap: 10px 24px; align-items: baseline; justify-content: space-between; }
+  .foot-row .who { font-family: var(--cond); font-size: 19px; }
+  .foot-row .meta { font-family: var(--mono); font-size: 12.5px; color: var(--muted); }
+
+  a { color: var(--accent); }
+  a:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+</style>
+
+<div class="wrap hero">
+  <div class="eyebrow">정사평 · 캡스톤 디자인 졸업작품</div>
+  <h1>영문 보안 로그를<br><span class="accent">한국어 위협 보고</span>로</h1>
+  <p class="lead">공격자를 유인해 기록하는 것까지는 오픈소스가 해준다.
+    남는 것은 <b>해석</b>이다. 허니팟이 쌓은 영문 원시 이벤트를 규칙 기반 분류와
+    한국어 LLM 해설을 거쳐, 전담 보안 인력이 없는 조직도 그대로 읽고 바로
+    조치할 수 있는 형태로 바꾼다.</p>
+
+  <div class="transform">
+    <div class="pane">
+      <div class="pane-h">허니팟이 남기는 것</div>
+      <pre class="raw">{"event_type": "alert",
+ "src_ip": "<b>203.0.113.99</b>",
+ "dest_port": <b>445</b>,
+ "alert": {
+   "signature": "<b>ET EXPLOIT [PTsecurity]
+     DoublePulsar Backdoor
+     installation communication</b>",
+   "category": "Attempted
+     Administrator Privilege Gain"
+ }}</pre>
+    </div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="pane out">
+      <div class="pane-h">관리자가 받는 것</div>
+      <p class="ko-sum">공격자가 SMB 파일 공유 포트(445)로 접근해
+        <b>DoublePulsar 백도어 설치</b>를 시도했습니다. 성공하면 관리자 권한으로
+        원격 명령을 실행할 수 있게 됩니다.</p>
+      <p class="ko-act"><b>대응</b> — 외부에서 445 포트로 들어오는 접속을 방화벽에서
+        차단하고, 해당 대역 윈도우 서버의 SMBv1 비활성화와 MS17-010 패치 적용
+        여부를 확인하십시오.</p>
+      <div class="chips">
+        <span class="chip sev">CRITICAL</span>
+        <span class="chip">mitre_score 92</span>
+        <span class="chip">T1105</span>
+      </div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px">실제 파이프라인이 만드는 필드 구성이다.
+    위험도는 LLM 이 아니라 MITRE 점수에서 계산한다 — 측정해보니 모델이 고위험을
+    낮게 매겼기 때문이다.</p>
+</div>
+
+<section class="alt">
+  <div class="wrap stack">
+    <div class="eyebrow">문제</div>
+    <h2>수집은 이미 해결된 문제다</h2>
+    <p class="lead">T-Pot 은 허니팟 25종을 묶어 로그를 쌓아준다. 그런데 남는 것은
+      <code style="font-family:var(--mono);font-size:.9em">cowrie.login.failed</code>
+      같은 영문 원시 이벤트뿐이고, 이걸 "무슨 일이 있었고 뭘 해야 하나"로 옮기려면
+      허니팟별 스키마와 MITRE ATT&CK 를 이미 알아야 한다.</p>
+    <p class="lead">대부분의 조직에는 그 사람이 없다. <b>그래서 로그는 쌓이기만 한다.</b></p>
+    <p class="note">이 프로젝트는 T-Pot 본체를 수정하지 않는다. Elasticsearch 를 읽어
+      자기 인덱스에만 쓰는 사이드카 4종을 얹었다. 업스트림 업데이트와 충돌하지 않고,
+      한 단계가 실패해도 이전 단계는 그대로 남는다.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">파이프라인</div>
+    <h2>4단을 거쳐 한국어가 된다</h2>
+    <div class="pipe">
+      <div class="step">
+        <span class="n">① 수집</span>
+        <span class="t">T-Pot · Logstash</span>
+        <p>허니팟 25종의 로그를 정규화하고 지오 정보를 붙인다.</p>
+        <span class="m">logstash-*</span>
+      </div>
+      <div class="step">
+        <span class="n">② 분류</span>
+        <span class="t">ml-classifier</span>
+        <p>규칙이 공격 유형과 MITRE 위협 점수를 정하고, LightGBM 이 그 위에서 교차검증한다.</p>
+        <span class="m">30초 주기 · 1,000건</span>
+      </div>
+      <div class="step">
+        <span class="n">③ 해설</span>
+        <span class="t">llm-analyzer</span>
+        <p>70점 이상 고위험만 한국어 요약과 대응 방안을 만든다. 같은 공격 패턴은 한 번만.</p>
+        <span class="m">EXAONE 3.5 · 로컬 추론</span>
+      </div>
+      <div class="step">
+        <span class="n">④ 제시</span>
+        <span class="t">대시보드 · 어택맵</span>
+        <p>Spring 이 인증과 권한을, Next.js 가 한국어 화면과 실시간 공격 지도를 맡는다.</p>
+        <span class="m">컨테이너 10개</span>
+      </div>
+    </div>
+    <div class="tags">
+      <span class="tag"><b>T-Pot</b> 24.04.1</span>
+      <span class="tag"><b>Elasticsearch</b> 저장·집계</span>
+      <span class="tag"><b>LightGBM</b> 교차검증</span>
+      <span class="tag"><b>MITRE ATT&CK</b> 위협 점수</span>
+      <span class="tag"><b>Ollama</b> 로컬 LLM</span>
+      <span class="tag"><b>Spring Boot</b> 인증·권한</span>
+      <span class="tag"><b>Next.js 15</b> 한국어 UI</span>
+      <span class="tag"><b>Docker Compose</b> 10 컨테이너</span>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap">
+    <div class="eyebrow">실측</div>
+    <h2>시연 데이터가 아니라 실제 공격으로 확인했다</h2>
+    <p class="lead">AWS 에 올린 T-Pot 이 <b>10일 동안</b> 실제로 받은 공격 로그
+      전량을 색인해 파이프라인을 처음부터 끝까지 완주시켰다.</p>
+    <div class="kpis">
+      <div class="kpi mark">
+        <span class="k">수집 이벤트</span><span class="v">1,026,903</span>
+        <span class="s">10일 · 수집 지점 18종</span>
+      </div>
+      <div class="kpi">
+        <span class="k">고유 공격 IP</span><span class="v">24,346</span>
+        <span class="s">미국 · 브라질 · 영국 순</span>
+      </div>
+      <div class="kpi">
+        <span class="k">고위험 선별</span><span class="v">45,075</span>
+        <span class="s">전체의 4.4%</span>
+      </div>
+      <div class="kpi mark">
+        <span class="k">규칙·모델 합의</span><span class="v">99.9<em>%</em></span>
+        <span class="s">불일치 782건은 검토 대상</span>
+      </div>
+    </div>
+    <p class="note" style="margin-top:16px">모델은 라벨을 뒤집지 못한다. 규칙이
+      기준선이고 모델은 자기 판단만 남겨, 어긋난 782건이 사람이 볼 큐로 떠오른다.
+      AI 가 틀려도 분류가 무너지지 않는 구조다.</p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="eyebrow">측정해서 알게 된 것</div>
+    <h2>재보지 않았으면 그대로 틀렸을 것들</h2>
+    <p class="lead">이 프로젝트의 결과물 절반은 "무엇이 되는가"가 아니라
+      <b>"무엇이 왜 안 되는가"</b>다. 전부 실측에서 나왔다.</p>
+    <div class="finds">
+      <div class="find">
+        <h3>위험도는 LLM 에게 맡길 일이 아니었다</h3>
+        <p>3B 모델이 고위험 10건을 10건 다 낮게 매겼다. 프롬프트를 고쳐도 같았고
+          7.8B 로 올려도 2/10 에 그쳤다. 능력 한계이므로 점수에서 계산하도록 회수했다.</p>
+        <span class="fig">10/10 실패 → 점수 파생</span>
+      </div>
+      <div class="find">
+        <h3>같은 이야기를 4만 번 쓰고 있었다</h3>
+        <p>고위험 45,075건이 실제로는 74개 공격 패턴이고, 상위 2개(둘 다 포트 445)가
+          89.8% 를 덮는다. 패턴당 한 번만 해설하도록 고쳤다.</p>
+        <span class="fig">31.8일 → 75분</span>
+      </div>
+      <div class="find">
+        <h3>모델 성능이 아니라 측정이 틀렸다</h3>
+        <p>평가셋을 학습과 다른 인코더로 만들어 카테고리 코드가 밀렸다. 20만 행 중
+          6만 행이 모델이 배운 적 없는 코드로 들어가 성능이 낮게 나왔다.</p>
+        <span class="fig">92.5% → 실제 99.9%</span>
+      </div>
+      <div class="find">
+        <h3>게이트는 최적화가 아니라 성립 조건이다</h3>
+        <p>위협 점수 70 이상만 통과시키는 필터가 95.6% 를 막는다. 없으면 100만 건이
+          전부 추론으로 들어가 725일이 걸린다.</p>
+        <span class="fig">95.6% 차단</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="alt">
+  <div class="wrap stack">
+    <div class="eyebrow">팀</div>
+    <h2>정사평</h2>
+    <p class="lead">허니팟 기반 사이버 공격 분석 시스템 · 2026년 4월 ~ 9월</p>
+    <div class="team">
+      <div class="member"><span class="name">이현</span><span class="lead-chip">팀장</span></div>
+      <div class="member"><span class="name">김동현</span></div>
+      <div class="member"><span class="name">홍영재</span></div>
+      <div class="member"><span class="name">이재민</span></div>
+    </div>
+    <div class="scope">
+      <span class="scope-h">맡은 일</span>
+      <ul>
+        <li><b>분류 파이프라인</b> — 규칙 라벨러와 ML 교차검증, 학습 데이터 진단</li>
+        <li><b>LLM 해설</b> — 한국어 프롬프트 설계, 모델 선정과 처리량 측정</li>
+        <li><b>백엔드 · 인증</b> — Spring Boot, JWT 권한, Elasticsearch 조회 API</li>
+        <li><b>프론트엔드</b> — 한국어 대시보드, 실시간 어택맵, 파이프라인 도식</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot-row">
+    <span class="who">정사평 · 허니팟 기반 사이버 공격 분석 시스템</span>
+    <span class="meta">T-Pot 24.04.1 · 컨테이너 10 · 사이드카 4 · 2026</span>
+  </div>
+</footer>

@@ -3,14 +3,15 @@
 //   view=ml (기본): ml-analysis-* (분류 로그 전체, 공격+정상). 개요 "총/공격/고위험" 필터용.
 //   view=llm       : llm-analysis-* (LLM 분석된 로그). 개요 "LLM 분석" 필터용.
 
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import type { 공격로그입력, 공격유형코드, 위험등급코드 } from "@/types/input";
+import { 인증헤더값, 인증실패통과 } from "@/lib/세션쿠키";
 
 const API = process.env.SPRING_API_URL ?? "http://localhost:8090";
 
 /** 로그인 토큰을 백엔드로 그대로 전달한다(없으면 헤더를 붙이지 않는다). */
-function 인증전달(req: Request): Record<string, string> | undefined {
-  const auth = req.headers.get("authorization");
+function 인증전달(req: NextRequest): Record<string, string> | undefined {
+  const auth = 인증헤더값(req);
   return auth ? { Authorization: auth } : undefined;
 }
 
@@ -55,13 +56,18 @@ function base(r: Record<string, unknown>, score: number, conf: number): 공격�
     대상URI: port ? `:${port}` : undefined,
     행위시퀀스: label ? [`${honeypot} 접속`, label] : [],
     요청횟수: 1,
-    ...({ _ml_label: label } as Record<string, unknown>),
+    // llm-analysis-* 문서의 _id 와 같다. 화면이 "이 사건에 이미 해설이 있는가" 를
+    // 그룹 키 계산 없이 바로 물을 수 있게 그대로 실어 보낸다.
+    ...({ _ml_label: label, _doc_id: r["source_doc_id"] ?? null } as Record<string, unknown>),
   };
 }
 
 // ml-analysis-* 행 → 입력 (+ _is_attack)
+// ml_multi_conf 는 classify.py 가 0~100 으로 쓴다(max_prob * 100). 입력 타입의
+// 탐지신뢰도는 0~1 이므로 여기서 정규화한다 — 안 하면 UI 가 다시 ×100 해서
+// "탐지 신뢰도 9990%" 가 된다.
 function mapMl(r: Record<string, unknown>): 공격로그입력 {
-  const out = base(r, Number(r["mitre_score"] ?? 0), Number(r["ml_multi_conf"] ?? 0));
+  const out = base(r, Number(r["mitre_score"] ?? 0), Number(r["ml_multi_conf"] ?? 0) / 100);
   return { ...out, ...({ _is_attack: r["ml_is_attack"] !== false } as Record<string, unknown>) };
 }
 
@@ -77,11 +83,15 @@ function mapLlm(r: Record<string, unknown>): 공격로그입력 {
   };
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   const view = new URL(req.url).searchParams.get("view") === "llm" ? "llm" : "ml";
   const path = view === "llm" ? "/api/export/llm" : "/api/export/ml";
   try {
-    const res = await fetch(`${API}${path}?format=json&since=now-7d`, { cache: "no-store", headers: 인증전달(req) });
+    const res = await fetch(`${API}${path}?format=json`, { cache: "no-store", headers: 인증전달(req) });
+    // 인증 실패는 아래 빈-응답 처리로 덮지 않고 그대로 올린다(세션쿠키.ts 참조).
+    const 인증거부 = 인증실패통과(res.status);
+    if (인증거부) return 인증거부;
+
     if (!res.ok) return NextResponse.json({ 공격목록: [], 오류: `backend ${res.status}` });
     const rows = (await res.json()) as Record<string, unknown>[];
     const arr = Array.isArray(rows) ? rows : [];

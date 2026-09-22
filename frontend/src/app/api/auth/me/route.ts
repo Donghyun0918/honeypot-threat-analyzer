@@ -5,11 +5,12 @@
 // 무효이므로, 값의 존재만으로 로그인 상태를 판단하면 안 된다.
 
 import { NextRequest, NextResponse } from "next/server";
+import { 인증헤더값 } from "@/lib/세션쿠키";
 
 const API = process.env.SPRING_API_URL ?? "http://localhost:8090";
 
 export async function GET(req: NextRequest) {
-  const auth = req.headers.get("authorization");
+  const auth = 인증헤더값(req);
   if (!auth) {
     return NextResponse.json({ message: "인증이 필요합니다." }, { status: 401 });
   }

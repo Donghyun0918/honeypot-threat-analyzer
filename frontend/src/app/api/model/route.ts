@@ -14,6 +14,11 @@ type Metrics = {
   n_train?: number;
   n_test?: number;
   n_features?: number;
+  // 학습에 쓰지 않은 실 ES 문서에서 규칙 라벨과 얼마나 합의하는가.
+  // 위의 accuracy/macro_f1 은 학습셋 내부 분할이라 "규칙을 외운" 수치이고
+  // 학습 분포 안에서만 유효하다(DATASET_FINDINGS.md §6). 일반화를 말할 수
+  // 있는 숫자는 이쪽뿐이라 화면에도 이걸 먼저 내보낸다.
+  holdout_vs_rule?: { n?: number; micro?: number; macro?: number };
 };
 
 async function loadMetrics(): Promise<{ m: Metrics; source: string }> {
@@ -51,6 +56,9 @@ export async function GET() {
       n_total: n_train + n_test,
       n_features: m.n_features ?? null,
       split_method: m.split_method ?? null,
+      holdout_n: m.holdout_vs_rule?.n ?? null,
+      holdout_micro: m.holdout_vs_rule?.micro ?? null,
+      holdout_macro: m.holdout_vs_rule?.macro ?? null,
     });
   } catch (e) {
     return NextResponse.json({ available: false, 오류: String(e) });

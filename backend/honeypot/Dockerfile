@@ -1,5 +1,5 @@
 # capstone backend (Spring Boot 3.4.0, Java 17) — threat-console 통합본
-# 멀티스테이지: gradle 빌드 → JRE 실행. profiling-service Dockerfile 패턴 적응.
+# 멀티스테이지: gradle 빌드 → JRE 실행.
 FROM eclipse-temurin:17-jdk-alpine AS builder
 WORKDIR /app
 

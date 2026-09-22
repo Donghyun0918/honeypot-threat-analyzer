@@ -39,6 +39,8 @@ from sklearn.metrics import (accuracy_score, classification_report,
                              confusion_matrix, f1_score)
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
+import encoder_guard
+
 FEATURE_COLS = [
     "hour", "is_night", "day_of_week",
     "dst_port", "protocol", "source_honeypot", "event_type",
@@ -59,6 +61,41 @@ def _load(csv_path: Path) -> tuple[np.ndarray, np.ndarray]:
     if missing:
         raise SystemExit(f"CSV missing required columns: {missing}")
     return df[FEATURE_COLS].to_numpy(), df["label"].astype(str).to_numpy()
+
+
+def _cat_frame(X: np.ndarray) -> pd.DataFrame:
+    """X 에서 카테고리 3열만 떼어 범위 대조에 넘긴다."""
+    idx = [FEATURE_COLS.index(c) for c in encoder_guard.CAT_COLS]
+    return pd.DataFrame(X[:, idx], columns=list(encoder_guard.CAT_COLS))
+
+
+def _check_encoders(args, 입력들: list[tuple[str, Path, np.ndarray]]) -> None:
+    """학습 입력들이 같은 인코더에서 나왔는지 본다.
+
+    §4 의 재발 방지다. 거기서는 홀드아웃을 학습과 다른 인코더로 뽑아
+    event_type 코드가 밀렸고, 20만 행 중 6만 행이 엉뚱한 카테고리가 됐다.
+    train/test 를 따로 주는 경로가 정확히 그 모양이라 여기서 막는다.
+    """
+    강제 = args.skip_encoder_check
+    옆 = [(이름, *encoder_guard.옆에있는인코더(경로), X) for 이름, 경로, X in 입력들]
+
+    # 1) 입력끼리 — train 과 test 가 다른 인코더에서 나오면 안 된다
+    if len(옆) > 1:
+        (이름_a, 경로_a, enc_a, _), (이름_b, 경로_b, enc_b, _) = 옆[0], 옆[1]
+        encoder_guard.대조(f"{이름_a}({경로_a})", enc_a,
+                          f"{이름_b}({경로_b})", enc_b, 강제=강제)
+
+    # 2) --encoders 로 넘긴 것 — 이게 모델 옆에 복사되어 운영에 쓰인다.
+    #    CSV 와 다르면 학습된 코드와 추론 코드가 어긋난다.
+    if args.encoders:
+        준것 = encoder_guard.인코더읽기(args.encoders)
+        for 이름, 경로, enc, X in 옆:
+            encoder_guard.대조(f"--encoders({args.encoders})", 준것,
+                              f"{이름}({경로})", enc, 강제=강제)
+            encoder_guard.범위대조(_cat_frame(X), 준것, 이름, 강제=강제)
+    else:
+        for 이름, 경로, enc, X in 옆:
+            encoder_guard.범위대조(_cat_frame(X), enc, 이름, 강제=강제)
 
 
 def _check_class_sizes(y: np.ndarray, context: str = "") -> None:
@@ -249,6 +286,8 @@ def main() -> int:
     ap.add_argument("--n-estimators", type=int, default=200)
     ap.add_argument("--max-depth",    type=int, default=None)
     ap.add_argument("--seed",         type=int, default=42)
+    ap.add_argument("--skip-encoder-check", action="store_true",
+                    help="인코더 대조를 건너뛴다. 일부러 섞어 볼 때만.")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -264,6 +303,7 @@ def main() -> int:
             raise SystemExit("Use either --csv or --train-csv/--test-csv, not both")
         X, y = _load(Path(args.csv))
         print(f"Loaded {len(y):,} samples, {len(FEATURE_COLS)} features")
+        _check_encoders(args, [("--csv", Path(args.csv), X)])
         _check_class_sizes(y, "full dataset")
 
         # Stratified split: preserves class ratio in both halves.
@@ -292,6 +332,8 @@ def main() -> int:
         X_train, y_train = _load(Path(args.train_csv))
         X_test, y_test   = _load(Path(args.test_csv))
         print(f"Manual split  train={len(y_train):,}  test={len(y_test):,}")
+        _check_encoders(args, [("--train-csv", Path(args.train_csv), X_train),
+                               ("--test-csv",  Path(args.test_csv),  X_test)])
         _check_class_sizes(y_train, "train set")
         if args.smote:
             X_train, y_train = _apply_smote(X_train, y_train, args.seed)

@@ -1,0 +1,73 @@
+# Minimal integration harness for ml-classifier (and llm-analyzer).
+# NOT part of the T-Pot PR — kept outside tpot-fork/ so the PR diff stays clean.
+#
+# What it does:
+#   1. Bring up a vanilla Elasticsearch 8 (NOT the T-Pot custom image)
+#   2. Bring up Kibana 8.13.4 for ndjson import validation (port 5601 -> 15601)
+#   3. Build ml-classifier from ../tpot-fork/docker/ml-classifier/
+#   4. Point it at the local ES with the same env contract as compose/ml.yml
+#
+# Run:
+#   docker compose -f integration-tests/docker-compose.yml up --build
+#   python integration-tests/inject_sample_docs.py
+#   bash integration-tests/verify_kibana_import.sh   # validate kibana_export_ko.ndjson
+#   curl -s http://127.0.0.1:19200/ml-analysis-*/_search?pretty
+
+networks:
+  itnet:
+
+services:
+  elasticsearch:
+    container_name: it-elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:9.2.3
+    environment:
+     - discovery.type=single-node
+     - xpack.security.enabled=false
+     - ES_JAVA_OPTS=-Xms1024m -Xmx1024m
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    networks: [itnet]
+    ports:
+     - "127.0.0.1:19200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health | grep -E '\"status\":\"(green|yellow)\"'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  kibana:
+    container_name: it-kibana
+    image: docker.elastic.co/kibana/kibana:9.2.3
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - xpack.security.enabled=false
+      - telemetry.enabled=false
+    networks: [itnet]
+    ports:
+      - "127.0.0.1:15601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5601/api/status | grep -q '\"level\":\"available\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+
+  ml-classifier:
+    container_name: it-ml-classifier
+    build:
+      context: ../tpot-fork/docker/ml-classifier
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks: [itnet]
+    environment:
+     - ES_HOST=http://elasticsearch:9200
+     - ES_SOURCE_INDEX=logstash-*
+     - ES_TARGET_PREFIX=ml-analysis-
+     - POLL_INTERVAL_SEC=10
+     - BATCH_SIZE=200
+     - LOG_LEVEL=INFO
+    volumes:
+     - ./state/ml-classifier:/data/ml-classifier

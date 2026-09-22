@@ -15,7 +15,35 @@ WEB_ATTACK_RE = re.compile(
     r")"
 )
 
-REVERSE_SHELL_KEYS = ("bash -i", "/dev/tcp", "nc -e", "mkfifo", "ncat")
+# 리버스셸 패턴. 단순 부분문자열로는 스크립트 언어 계열을 통째로 놓친다 —
+# `python -c 'import socket,os,pty;...'` 같은 행이 wget/curl 도 없어 Recon 으로
+# 떨어졌다(테스트가 잡아냈다). 부분문자열 목록은 남겨두고(빠르고 읽기 쉽다),
+# 그것으로 안 잡히는 형태만 정규식으로 보탠다.
+REVERSE_SHELL_KEYS = ("bash -i", "sh -i", "/dev/tcp", "/dev/udp",
+                      "nc -e", "mkfifo", "ncat", "0>&1")
+
+# 오탐을 피하려고 전부 **조합**을 요구한다. `socket` 하나로는 평범한 코드와
+# 구분되지 않지만, 허니팟 셸에 들어온 `python -c ... socket` 은 그렇지 않다.
+_REVERSE_SHELL_RE = re.compile(
+    r"(?is)("
+    r"(python|perl|ruby|php|lua)[0-9.]*\s+-[ce]\b.{0,200}?\bsocket\b"   # 스크립트 리버스셸
+    r"|socat\b.{0,80}?(exec\s*:|tcp[46]?-connect)"                        # socat
+    r"|(nc|ncat|netcat)\b.{0,40}?\s-[a-z]*[ec][a-z]*\s"                  # nc -e / ncat -c
+    r"|telnet\b.{0,60}?\|\s*(/bin/)?(ba)?sh"                             # telnet | sh
+    r")"
+)
+
+def _is_reverse_shell(text: str) -> bool:
+    """리버스셸 판단을 한 곳에 모은다.
+
+    이전에는 세 군데(공통 판정·cowrie 분기·기본 폴백)가 각자
+    ``REVERSE_SHELL_KEYS`` 만 훑었다. 탐지 규칙을 고치면 한 곳만 고쳐지고
+    나머지는 남아 허니팟에 따라 답이 갈린다 — 그게 이 프로젝트에서 반복된
+    실패 방식이다.
+    """
+    low = text.lower()
+    return any(k in low for k in REVERSE_SHELL_KEYS) or bool(_REVERSE_SHELL_RE.search(text))
+
 
 # 원격에서 실행 파일을 끌어오는 전형적 패턴. 셸 명령이든 HTTP 페이로드든 같다.
 _MALWARE_FETCH_RE = re.compile(
@@ -51,7 +79,7 @@ def _decisive_from_text(text: str) -> str | None:
     if not text:
         return None
     low = text.lower()
-    if any(k in low for k in REVERSE_SHELL_KEYS):
+    if _is_reverse_shell(text):
         return "Intrusion"
     if _MALWARE_FETCH_RE.search(text):
         return "Malware"
@@ -157,7 +185,7 @@ def label_from_doc(doc: dict) -> str:
 
     # --- Cowrie: SSH/Telnet honeypot ---
     if "cowrie" in src_hp or src_hp == "cowrie":
-        if any(_has(cmd, k) for k in REVERSE_SHELL_KEYS):
+        if _is_reverse_shell(cmd):
             return "Intrusion"
         if "command" in ev_type and (_has(cmd, "wget") or _has(cmd, "curl") or _has(cmd, "chmod")):
             return "Malware"
@@ -198,7 +226,7 @@ def label_from_doc(doc: dict) -> str:
         return "Recon"
 
     # --- Generic fallbacks ---
-    if any(_has(cmd, k) for k in REVERSE_SHELL_KEYS):
+    if _is_reverse_shell(cmd):
         return "Intrusion"
     if "command" in ev_type and (_has(cmd, "wget") or _has(cmd, "curl")):
         return "Malware"

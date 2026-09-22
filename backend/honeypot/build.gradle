@@ -41,3 +41,14 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }
+
+// 이게 없으면 Gradle 이 JUnit 4 러너를 쓴다. JUnit 5 테스트를 **하나도 찾지
+// 못하는데 BUILD SUCCESSFUL 이 뜬다** — 테스트가 없는 것과 통과한 것이 구분되지
+// 않는다. 실제로 기존 HoneypotApplicationTests 도 여태 돈 적이 없었다.
+test {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'short'
+    }
+}
