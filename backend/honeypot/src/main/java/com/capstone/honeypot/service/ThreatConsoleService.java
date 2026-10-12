@@ -37,6 +37,19 @@ public class ThreatConsoleService {
     @Value("${threat-console.window.long:now-7d}")
     private String 창김;
 
+    /**
+     * 설정된 기본 조회 창. 컨트롤러가 파일명·메타에 쓰려고 알아야 한다.
+     *
+     * <p>이게 없어서 {@code ThreatConsoleController} 가 {@code "now-7d"} 를 <b>따로
+     * 하드코딩</b>하고 있었다. `.env` 에 {@code THREAT_CONSOLE_WINDOW_LONG=now-1y} 를
+     * 넣어도 내보내기·공격 목록은 7일만 봤고, <b>보관 로그로 시연하면 대시보드
+     * 목록이 빈 채로 뜬다</b> — README 가 안내하는 설정을 따라도 고쳐지지 않았다.
+     * 창을 두 군데 적어서 한 군데만 고치게 된 경우다(작업 로그 §12 와 같은 종류).
+     */
+    public String 기본창() {
+        return 창김;
+    }
+
     // ── overview ─────────────────────────────────────────────────────────
     public Map<String, Object> overview(String since) {
         since = 창(since, 창짧음);

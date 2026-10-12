@@ -101,7 +101,8 @@ public class ThreatConsoleController {
     public ResponseEntity<byte[]> exportMl(
             @RequestParam(required = false) String since,
             @RequestParam(required = false, defaultValue = "csv") String format) {
-        String window = (since == null || since.isBlank()) ? "now-7d" : since;
+        // 기본 창은 서비스가 정한다 — 여기서 따로 정하면 .env 설정이 무시된다.
+        String window = (since == null || since.isBlank()) ? service.기본창() : since;
         List<Map<String, Object>> rows = service.exportMl(window);
         List<String> cols = List.of("@timestamp", "ml_label", "ml_is_attack", "ml_multi_conf",
                 "mitre_score", "mitre_technique", "src_ip", "dest_port",
@@ -113,7 +114,8 @@ public class ThreatConsoleController {
     public ResponseEntity<byte[]> exportLlm(
             @RequestParam(required = false) String since,
             @RequestParam(required = false, defaultValue = "csv") String format) {
-        String window = (since == null || since.isBlank()) ? "now-7d" : since;
+        // 기본 창은 서비스가 정한다 — 여기서 따로 정하면 .env 설정이 무시된다.
+        String window = (since == null || since.isBlank()) ? service.기본창() : since;
         List<Map<String, Object>> rows = service.exportLlm(window);
         List<String> cols = List.of("@timestamp", "severity", "risk_score", "mitre_score",
                 "src_ip", "honeypot", "ml_label",

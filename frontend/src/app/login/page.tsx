@@ -5,8 +5,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Radar from "@/components/intro/Radar";
 import {
-  Shield, User, Lock, Eye, EyeOff, ArrowLeft, ArrowRight,
+  User, Lock, Eye, EyeOff, ArrowLeft, ArrowRight,
   AlertTriangle, CheckCircle2, Info, Activity, BarChart3, ShieldCheck,
 } from "lucide-react";
 
@@ -75,21 +76,18 @@ export default function LoginPage() {
       <aside className="auth-brand">
         <div className="auth-brand-in">
           <div className="brand">
-            <span className="brand-mark"><Shield className="icon" /></span>
-            <span className="brand-name">정사<span>평</span></span>
+            <span className="brand-mark" />
+            <span className="brand-name">정사평<span>.</span></span>
           </div>
           <div className="hp-visual">
-            <div className="hp-ring-box">
-              <div className="hp-ring" /><div className="hp-ring" /><div className="hp-ring" />
-              <div className="hp-core"><Shield className="icon" /></div>
-            </div>
+            <Radar />
           </div>
           <div>
-            <div className="brand-headline">공격자를 <span>유인</span>하고<br />AI로 <span>분석</span>합니다</div>
+            <div className="brand-headline">공격자를 <span>유인</span>하고<br /><span className="외곽">AI로</span> 분석합니다</div>
             <p className="brand-desc">허니팟에 수집된 사이버 공격 데이터를 대규모 언어 모델이 실시간으로 분석해 위협 인텔리전스를 제공합니다.</p>
             <div className="hl-list">
-              {HIGHLIGHTS.map((h) => (
-                <div key={h.text} className="hl-item"><span className="hl-ic"><h.icon className="icon" /></span>{h.text}</div>
+              {HIGHLIGHTS.map((h, i) => (
+                <div key={h.text} className="hl-item"><span className="hl-no">{String(i + 1).padStart(3, "0")}</span><span className="hl-ic"><h.icon className="icon" /></span>{h.text}</div>
               ))}
             </div>
           </div>
@@ -100,7 +98,8 @@ export default function LoginPage() {
       <main className="auth-form">
         <div className={`auth-card ${shake ? "shake" : ""}`}>
           <Link href="/" className="back-link"><ArrowLeft className="icon" /> 홈으로 돌아가기</Link>
-          <h1 className="auth-title">다시 오셨군요</h1>
+          <div className="auth-kicker">001 · SIGN IN</div>
+          <h1 className="auth-title">다시 오셨군요<span style={{ color: "var(--accent)" }}>.</span></h1>
           <p className="auth-sub">계정이 없으신가요? <Link href="/signup">회원가입</Link></p>
 
           <div className="alert alert-info" style={{ margin: "20px 0" }}>

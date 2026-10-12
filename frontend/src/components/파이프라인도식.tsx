@@ -92,12 +92,12 @@ const 출처들 = [
 
 /* ── 색 (globals.css 토큰) ────────────────────────────────────────────────── */
 const 색 = {
-  원본: "#94a3b8",   // --text-3
-  분류: "#0f6b78",   // --accent
-  이견: "#9a5f0c",   // --amber
-  high: "#9e3a31",   // --red — 대시보드 sev-HIGH 와 동일
-  crit: "#5f1d33",   // sev-CRITICAL 이 HIGH 보다 어두운 규칙을 따름
-  탈락: "#c9d2dc",   // --border-strong
+  원본: "#75756f",   // --text-3
+  분류: "#c9f24a",   // --accent
+  이견: "#ffc861",   // --amber
+  high: "#ff8a5c",   // --orange — 대시보드 sev-HIGH 와 동일
+  crit: "#ff4d6d",   // --red — sev-CRITICAL 이 HIGH 보다 뜨거운 규칙을 따름
+  탈락: "#3a3a3f",   // --border-strong 을 불투명하게
 };
 
 /* ── 구간별 이동 시간 (1× 기준, 초) ───────────────────────────────────────── */
@@ -463,10 +463,10 @@ export default function 파이프라인도식() {
           aria-label={`수집 지점 ${지점수}종이 ${수집일수}일간 받은 공격 로그 ${쉼표(전체)}건이 logstash 인덱스와 ml-classifier 를 지나 ml-analysis 인덱스에 쌓이고, mitre_score 70점 게이트에서 ${쉼표(고위험)}건만 llm-analyzer 로 넘어가는 흐름도. 게이트에서 ${쉼표(탈락수)}건이 정지하고, 분류 단계에서 ${쉼표(이견수)}건이 검토 큐로 표시된다. LLM 은 하루 ${쉼표(LLM일처리)}건만 처리할 수 있어 ${쉼표(LLM적체)}건이 적체된다.`}>
           <defs>
             <marker id="화살" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <polygon points="0,1 8,4 0,7" fill="#c9d2dc" />
+              <polygon points="0,1 8,4 0,7" fill={색.탈락} />
             </marker>
             <marker id="화살읽기" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
-              <polygon points="0,1 8,4 0,7" fill="#0f6b78" />
+              <polygon points="0,1 8,4 0,7" fill={색.분류} />
             </marker>
           </defs>
 
@@ -527,10 +527,10 @@ export default function 파이프라인도식() {
             <text className="이름" x="368" y="211" textAnchor="middle">ml-classifier</text>
             <text className="잔글" x="368" y="226" textAnchor="middle">규칙이 라벨, 모델은 검증</text>
             <text className="설정" x="368" y="241" textAnchor="middle">30초 · 1,000건</text>
-            <rect x="318" y="251" width="100" height="7" rx="1.5" fill="#9a5f0c" />
+            <rect x="318" y="251" width="100" height="7" rx="1.5" fill={색.이견} />
             {/* 폭 100 이 전체. 합의 비율만큼 채운다 — 숫자를 손으로 적으면
                 수치가 바뀔 때 막대만 옛 비율로 남는다(87.6 이 그랬다). */}
-            <rect x="318" y="251" width={(합의수 / 전체 * 100).toFixed(1)} height="7" rx="1.5" fill="#0f6b78" />
+            <rect x="318" y="251" width={(합의수 / 전체 * 100).toFixed(1)} height="7" rx="1.5" fill={색.분류} />
             <text className="설정" x="318" y="273">합의 <tspan id="x-n합의">0</tspan></text>
             <text className="설정 이견" x="418" y="273" textAnchor="end">이견 <tspan id="x-n이견2">0</tspan></text>
             <text className="잔글" x="368" y="290" textAnchor="middle">{백분(합의수)}% / {(이견수 / 전체 * 100).toFixed(2)}%</text>
@@ -543,12 +543,12 @@ export default function 파이프라인도식() {
             <rect className="칩 큰칩" x="474" y="211" width="102" height="70" rx="3" />
             <text className="이름" x="525" y="231" textAnchor="middle">ml-analysis-*</text>
             <text className="수" id="x-n분기" x="525" y="252" textAnchor="middle">0</text>
-            <rect x="484" y="260" width="82" height="6" rx="1" fill="#eef1f5" />
-            <rect id="bar-etc" x="484" y="260" width="0" height="6" fill="#c9d2dc" />
-            <rect id="bar-rc"  x="484" y="260" width="0" height="6" fill="#94a3b8" />
-            <rect id="bar-mw"  x="484" y="260" width="0" height="6" fill="#5f1d33" />
-            <rect id="bar-bf"  x="484" y="260" width="0" height="6" fill="#0f6b78" />
-            <rect id="bar-in"  x="484" y="260" width="0" height="6" fill="#9e3a31" />
+            <rect x="484" y="260" width="82" height="6" rx="1" fill="#18181d" />
+            <rect id="bar-etc" x="484" y="260" width="0" height="6" fill={색.탈락} />
+            <rect id="bar-rc"  x="484" y="260" width="0" height="6" fill={색.원본} />
+            <rect id="bar-mw"  x="484" y="260" width="0" height="6" fill={색.crit} />
+            <rect id="bar-bf"  x="484" y="260" width="0" height="6" fill={색.분류} />
+            <rect id="bar-in"  x="484" y="260" width="0" height="6" fill={색.high} />
             <text className="잔글" x="525" y="277" textAnchor="middle">라벨 5종 · 분기점</text>
             <rect id="act-분기" className="활성" x="474" y="279" width="102" height="2" opacity="0" />
             <rect className="타격" x="474" y="211" width="102" height="70" />
@@ -595,7 +595,7 @@ export default function 파이프라인도식() {
             <text className="이름" x="1088" y="213" textAnchor="middle">대시보드</text>
             <text className="설정" x="1088" y="229" textAnchor="middle">Spring :8091</text>
             <text className="설정" x="1088" y="242" textAnchor="middle">Next.js :8002</text>
-            <line x1="1040" y1="253" x2="1136" y2="253" stroke="#dde3ea" strokeWidth="1" />
+            <line x1="1040" y1="253" x2="1136" y2="253" stroke="rgba(244,244,241,0.10)" strokeWidth="1" />
             <text className="잔글" x="1088" y="269" textAnchor="middle">개요는 전량 기준</text>
             <text className="잔글" x="1088" y="284" textAnchor="middle">LLM 카드만 해설분 기준</text>
             <rect className="타격" x="1026" y="182" width="124" height="120" />
@@ -620,8 +620,8 @@ export default function 파이프라인도식() {
       </div>
 
       <div className="도식범례">
-        <span className="범"><svg width="30" height="9"><line x1="0" y1="4.5" x2="30" y2="4.5" stroke="#c9d2dc" strokeWidth="1.6" /><circle cx="15" cy="4.5" r="3.1" fill="#0f6b78" /></svg>쓰기 — 문서가 실제로 이동</span>
-        <span className="범"><svg width="30" height="9"><line x1="0" y1="4.5" x2="30" y2="4.5" stroke="#0f6b78" strokeWidth="1.4" strokeDasharray="5 6" /></svg>읽기 — 대시보드가 조회</span>
+        <span className="범"><svg width="30" height="9"><line x1="0" y1="4.5" x2="30" y2="4.5" stroke={색.탈락} strokeWidth="1.6" /><circle cx="15" cy="4.5" r="3.1" fill={색.분류} /></svg>쓰기 — 문서가 실제로 이동</span>
+        <span className="범"><svg width="30" height="9"><line x1="0" y1="4.5" x2="30" y2="4.5" stroke={색.분류} strokeWidth="1.4" strokeDasharray="5 6" /></svg>읽기 — 대시보드가 조회</span>
         <span className="범"><i style={{ background: 색.이견 }} />모델 이견</span>
         <span className="범"><i style={{ background: 색.high }} />HIGH · 85점</span>
         <span className="범"><i style={{ background: 색.crit }} />CRITICAL · 92점</span>
@@ -671,7 +671,7 @@ export default function 파이프라인도식() {
           font-family: var(--mono); font-size: 0.74rem; font-weight: 500; color: var(--text-2); padding: 6px 11px;
         }
         .속도 button:first-child { border-left: 0; }
-        .속도 button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+        .속도 button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
 
         .도식판 {
           overflow-x: auto; background: var(--surface); border: 1px solid var(--border);

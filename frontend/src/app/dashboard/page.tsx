@@ -5,12 +5,13 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { 인증fetch, 로그아웃 } from "@/lib/auth";
 import * as d3 from "d3";
 import type { 공격로그입력 } from "@/types/input";
 import {
-  Shield, Activity, AlertTriangle, Globe, ShieldCheck, Share2, Search,
-  FileDown, RefreshCw, Clock, Radio, BarChart3, Crosshair, TrendingUp,
+  AlertTriangle, Globe, ShieldCheck, Share2, Search,
+  FileDown, RefreshCw, Clock, BarChart3, Crosshair, TrendingUp,
   Database, ShieldAlert, Flame, Sparkles, ChevronDown, ChevronUp,
   BrainCircuit,
 } from "lucide-react";
@@ -108,7 +109,7 @@ function 대응권고카드(r: Record<string, unknown>): string {
 }
 function 전체리포트카드(r: Record<string, unknown>): string {
   let h = "";
-  const 소제목 = (t: string) => `<div style="margin-bottom:6px;font-size:0.8rem;font-weight:700;color:var(--text-2);">${t}</div>`;
+  const 소제목 = (t: string) => `<div class="결과소제목">${t}</div>`;
   if (r.사건요약) h += `${소제목("사건 요약")}${사건요약카드(r.사건요약 as Record<string, unknown>)}`;
   if (r.의도분석 || r.숙련도분석) {
     h += `<hr class="결과구분선"><div class="결과그리드">`;
@@ -292,12 +293,12 @@ export default function DashboardPage() {
     const 각도 = (p: number) => -Math.PI / 2 + (p / 100) * Math.PI;
     const arc = d3.arc<{ startAngle: number; endAngle: number }>().innerRadius(R내).outerRadius(R외).cornerRadius(4);
 
-    g.append("path").attr("d", arc({ startAngle: 각도(0), endAngle: 각도(100) }) ?? "").attr("fill", "#e2e8f0");
-    ([{ s: 0, e: 34, c: "#ef4444" }, { s: 34, e: 67, c: "#f59e0b" }, { s: 67, e: 100, c: "#22c55e" }] as const).forEach(({ s, e, c }) => {
+    g.append("path").attr("d", arc({ startAngle: 각도(0), endAngle: 각도(100) }) ?? "").attr("fill", "rgba(244,244,241,0.08)");
+    ([{ s: 0, e: 34, c: "#ff4d6d" }, { s: 34, e: 67, c: "#ffc861" }, { s: 67, e: 100, c: "#c9f24a" }] as const).forEach(({ s, e, c }) => {
       g.append("path").attr("d", arc({ startAngle: 각도(s), endAngle: 각도(e) }) ?? "").attr("fill", c).attr("opacity", 0.18);
     });
 
-    const 활성색 = 건강점수 < 34 ? "#ef4444" : 건강점수 < 67 ? "#f59e0b" : "#22c55e";
+    const 활성색 = 건강점수 < 34 ? "#ff4d6d" : 건강점수 < 67 ? "#ffc861" : "#c9f24a";
     const 활성arc = g.append("path").attr("fill", 활성색).attr("filter", `drop-shadow(0 0 6px ${활성색}88)`);
     const d = { startAngle: 각도(0), endAngle: 각도(0) };
     활성arc.datum(d).attr("d", arc(d) ?? "")
@@ -311,24 +312,24 @@ export default function DashboardPage() {
       const θ = 각도(p);
       g.append("line").attr("x1", (R외 + 5) * Math.sin(θ)).attr("y1", -(R외 + 5) * Math.cos(θ))
         .attr("x2", (R외 + 11) * Math.sin(θ)).attr("y2", -(R외 + 11) * Math.cos(θ))
-        .attr("stroke", "#cbd5e1").attr("stroke-width", 1.5).attr("stroke-linecap", "round");
+        .attr("stroke", "rgba(244,244,241,0.25)").attr("stroke-width", 1.5).attr("stroke-linecap", "round");
       g.append("text").attr("x", (R외 + 20) * Math.sin(θ)).attr("y", -(R외 + 20) * Math.cos(θ))
         .attr("text-anchor", "middle").attr("dominant-baseline", "middle")
-        .attr("font-size", "9px").attr("fill", "#94a3b8").text(p);
+        .attr("font-size", "9px").attr("font-family", "IBM Plex Mono, monospace").attr("fill", "#75756f").text(p);
     });
 
     const 바늘 = g.append("line").attr("x1", 0).attr("y1", 0).attr("x2", 0).attr("y2", 0)
-      .attr("stroke", "#1a1a2e").attr("stroke-width", 2.5).attr("stroke-linecap", "round");
+      .attr("stroke", "#f4f4f1").attr("stroke-width", 2.5).attr("stroke-linecap", "round");
     const L = R내 - 6;
     바늘.transition().duration(900).ease(d3.easeCubicOut)
       .attrTween("x2", () => { const i = d3.interpolate(0, L * Math.sin(각도(건강점수))); return (t) => String(i(t)); })
       .attrTween("y2", () => { const i = d3.interpolate(0, -L * Math.cos(각도(건강점수))); return (t) => String(i(t)); });
 
-    g.append("circle").attr("r", 6).attr("fill", "#1a1a2e");
+    g.append("circle").attr("r", 6).attr("fill", "#f4f4f1");
     g.append("text").attr("text-anchor", "middle").attr("y", -16)
-      .attr("font-size", "28px").attr("font-weight", "800").attr("fill", 활성색).text(건강점수);
+      .attr("font-size", "30px").attr("font-weight", "700").attr("font-family", "Space Grotesk, sans-serif").attr("letter-spacing", "-0.04em").attr("fill", 활성색).text(건강점수);
     g.append("text").attr("text-anchor", "middle").attr("y", 0)
-      .attr("font-size", "10px").attr("fill", "#94a3b8").text("/ 100");
+      .attr("font-size", "10px").attr("font-family", "IBM Plex Mono, monospace").attr("fill", "#75756f").text("/ 100");
   }, []);
 
   // ── D3 네트워크 그래프 ───────────────────────────────────────────────────
@@ -354,35 +355,37 @@ export default function DashboardPage() {
 
     const defs = svg.append("defs");
     defs.append("marker").attr("id", "화살표").attr("viewBox", "0 -5 10 10").attr("refX", 28).attr("refY", 0).attr("markerWidth", 6).attr("markerHeight", 6).attr("orient", "auto")
-      .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", "#94a3b8");
+      .append("path").attr("d", "M0,-5L10,0L0,5").attr("fill", "rgba(244,244,241,0.4)");
     const 필터 = defs.append("filter").attr("id", "glow").attr("x", "-30%").attr("y", "-30%").attr("width", "160%").attr("height", "160%");
     필터.append("feGaussianBlur").attr("stdDeviation", "4").attr("result", "blur");
     필터.append("feMerge").selectAll("feMergeNode").data(["blur", "SourceGraphic"]).join("feMergeNode").attr("in", (d) => d);
 
     const 링크El = svg.append("g").selectAll("line").data(링크).join("line")
-      .attr("stroke", "#e2e8f0").attr("stroke-width", 2).attr("stroke-dasharray", "7 4").attr("marker-end", "url(#화살표)");
+      .attr("stroke", "rgba(244,244,241,0.2)").attr("stroke-width", 1.5).attr("stroke-dasharray", "6 5").attr("marker-end", "url(#화살표)");
     const 노드El = svg.append("g").selectAll<SVGGElement, 노드타입>("g").data(노드).join("g").attr("cursor", "default");
 
     노드El.append("circle")
       .attr("r", (d) => d.type === "action" ? 20 : 28)
-      .attr("fill", (d) => d.type === "attacker" ? "#fee2e2" : d.type === "honeypot" ? "#eef2ff" : "#f8fafc")
-      .attr("stroke", (d) => d.type === "attacker" ? "#ef4444" : d.type === "honeypot" ? "#6366f1" : "#cbd5e1")
+      .attr("fill", (d) => d.type === "attacker" ? "rgba(255,77,109,0.14)" : d.type === "honeypot" ? "rgba(201,242,74,0.12)" : "#131317")
+      .attr("stroke", (d) => d.type === "attacker" ? "#ff4d6d" : d.type === "honeypot" ? "#c9f24a" : "rgba(244,244,241,0.28)")
       .attr("stroke-width", 2).attr("filter", (d) => d.type === "attacker" ? "url(#glow)" : null);
     노드El.filter((d) => d.type !== "action").append("text")
-      .attr("text-anchor", "middle").attr("dominant-baseline", "central").attr("font-size", "16px")
+      .attr("text-anchor", "middle").attr("dominant-baseline", "central").attr("font-size", "13px")
+      .attr("font-family", "IBM Plex Mono, monospace").attr("font-weight", "600")
+      .attr("fill", (d) => d.type === "attacker" ? "#ff4d6d" : "#c9f24a")
       .text((d) => d.type === "attacker" ? "!" : "HP");
     노드El.filter((d) => d.type === "action").append("text")
       .attr("text-anchor", "middle").attr("dominant-baseline", "central")
-      .attr("font-size", "9.5px").attr("font-weight", "600").attr("fill", "#475569")
+      .attr("font-size", "9.5px").attr("font-weight", "600").attr("fill", "#a4a49f")
       .text((d) => d.label.slice(0, 5));
     노드El.append("text").attr("text-anchor", "middle").attr("y", (d) => d.type === "action" ? 30 : 38)
-      .attr("font-size", "10px").attr("font-weight", "600").attr("fill", "#374151")
+      .attr("font-size", "10px").attr("font-weight", "600").attr("font-family", "IBM Plex Mono, monospace").attr("fill", "#f4f4f1")
       .text((d) => d.label.length > 13 ? d.label.slice(0, 13) + "…" : d.label);
     노드El.filter((d) => !!d.sub).append("text").attr("text-anchor", "middle").attr("y", (d) => d.type === "action" ? 43 : 50)
-      .attr("font-size", "9px").attr("fill", "#94a3b8").text((d) => d.sub ?? "");
+      .attr("font-size", "9px").attr("fill", "#75756f").text((d) => d.sub ?? "");
 
     function 입자생성(링크d: 링크타입) {
-      const 입자 = svg.append("circle").attr("r", 4).attr("fill", "#ef4444").attr("opacity", 0.85).attr("filter", "url(#glow)");
+      const 입자 = svg.append("circle").attr("r", 3.5).attr("fill", "#c9f24a").attr("opacity", 0.85).attr("filter", "url(#glow)");
       function 이동() {
         const src = 링크d.source as 노드타입;
         const tgt = 링크d.target as 노드타입;
@@ -555,11 +558,11 @@ export default function DashboardPage() {
                 { 축: "긴급도", 값: 긴급도 },
               ]);
               바차트그리기([
-                { 항목: "위험 점수", 값: 선택공격.위험점수, 색: "#ef4444" },
-                { 항목: "탐지 신뢰도", 값: (선택공격.탐지신뢰도 || 0.8) * 100, 색: "#6366f1" },
-                { 항목: "공격자 정교함", 값: 숙련도점수값, 색: "#f59e0b" },
-                { 항목: "파급력 점수", 값: 의도점수값, 색: "#8b5cf6" },
-                { 항목: "대응 긴급도", 값: 긴급도, 색: "#dc2626" },
+                { 항목: "위험 점수", 값: 선택공격.위험점수, 색: "#ff4d6d" },
+                { 항목: "탐지 신뢰도", 값: (선택공격.탐지신뢰도 || 0.8) * 100, 색: "#66e8ff" },
+                { 항목: "공격자 정교함", 값: 숙련도점수값, 색: "#ffc861" },
+                { 항목: "파급력 점수", 값: 의도점수값, 색: "#b49bff" },
+                { 항목: "대응 긴급도", 값: 긴급도, 색: "#ff8a5c" },
               ]);
             }
           }, 100);
@@ -595,22 +598,22 @@ export default function DashboardPage() {
     [20, 40, 60, 80, 100].forEach((p) => {
       const pts = d3.range(N).map((i) => 값to좌표(i, p));
       g.append("polygon").attr("points", pts.map((d) => d.join(",")).join(" "))
-        .attr("fill", p === 100 ? "#f8fafc" : "none").attr("stroke", "#e2e8f0").attr("stroke-width", p === 100 ? 1.5 : 1);
+        .attr("fill", p === 100 ? "rgba(244,244,241,0.02)" : "none").attr("stroke", "rgba(244,244,241,0.12)").attr("stroke-width", 1);
     });
     d3.range(N).forEach((i) => {
       const [x, y] = 값to좌표(i, 100);
-      g.append("line").attr("x1", cx).attr("y1", cy).attr("x2", x).attr("y2", y).attr("stroke", "#e2e8f0").attr("stroke-width", 1);
+      g.append("line").attr("x1", cx).attr("y1", cy).attr("x2", x).attr("y2", y).attr("stroke", "rgba(244,244,241,0.12)").attr("stroke-width", 1);
     });
     const pts = 데이터목록.map((d, i) => 값to좌표(i, d.값));
-    g.append("polygon").attr("points", pts.map((d) => d.join(",")).join(" ")).attr("fill", "#6366f130").attr("stroke", "#6366f1").attr("stroke-width", 2);
+    g.append("polygon").attr("points", pts.map((d) => d.join(",")).join(" ")).attr("fill", "rgba(201,242,74,0.16)").attr("stroke", "#c9f24a").attr("stroke-width", 1.8);
     pts.forEach(([x, y]) => {
-      g.append("circle").attr("cx", x).attr("cy", y).attr("r", 4).attr("fill", "#6366f1").attr("stroke", "white").attr("stroke-width", 1.5);
+      g.append("circle").attr("cx", x).attr("cy", y).attr("r", 4).attr("fill", "#c9f24a").attr("stroke", "#060607").attr("stroke-width", 1.5);
     });
     데이터목록.forEach((d, i) => {
       const [x, y] = 값to좌표(i, 118);
       const 정렬 = x < cx - 5 ? "end" : x > cx + 5 ? "start" : "middle";
-      g.append("text").attr("x", x).attr("y", y).attr("text-anchor", 정렬).attr("dominant-baseline", "middle").attr("font-size", "11px").attr("font-weight", "700").attr("fill", "#374151").text(d.축);
-      g.append("text").attr("x", x).attr("y", y + 13).attr("text-anchor", 정렬).attr("dominant-baseline", "middle").attr("font-size", "10px").attr("fill", "#6366f1").attr("font-weight", "800").text(Math.round(d.값));
+      g.append("text").attr("x", x).attr("y", y).attr("text-anchor", 정렬).attr("dominant-baseline", "middle").attr("font-size", "11px").attr("font-weight", "600").attr("fill", "#a4a49f").text(d.축);
+      g.append("text").attr("x", x).attr("y", y + 13).attr("text-anchor", 정렬).attr("dominant-baseline", "middle").attr("font-size", "10px").attr("font-family", "IBM Plex Mono, monospace").attr("fill", "#c9f24a").attr("font-weight", "600").text(Math.round(d.값));
     });
   }
 
@@ -627,11 +630,11 @@ export default function DashboardPage() {
     데이터목록.forEach((d, i) => {
       const y = i * (바높이 + 바간격);
       const barW = (d.값 / 100) * 바영역W;
-      g.append("rect").attr("x", 0).attr("y", y).attr("width", 바영역W).attr("height", 바높이).attr("rx", 6).attr("fill", "#f1f5f9");
-      g.append("rect").attr("x", 0).attr("y", y).attr("width", 0).attr("height", 바높이).attr("rx", 6).attr("fill", d.색).attr("opacity", 0.85)
+      g.append("rect").attr("x", 0).attr("y", y).attr("width", 바영역W).attr("height", 바높이).attr("rx", 12).attr("fill", "rgba(244,244,241,0.06)");
+      g.append("rect").attr("x", 0).attr("y", y).attr("width", 0).attr("height", 바높이).attr("rx", 12).attr("fill", d.색).attr("opacity", 0.9)
         .transition().duration(800).delay(i * 100).ease(d3.easeCubicOut).attr("width", barW);
-      g.append("text").attr("x", -8).attr("y", y + 바높이 / 2).attr("text-anchor", "end").attr("dominant-baseline", "middle").attr("font-size", "11px").attr("font-weight", "600").attr("fill", "#374151").text(d.항목);
-      g.append("text").attr("x", 바영역W + 6).attr("y", y + 바높이 / 2).attr("dominant-baseline", "middle").attr("font-size", "11px").attr("font-weight", "800").attr("fill", d.색).text(Math.round(d.값));
+      g.append("text").attr("x", -8).attr("y", y + 바높이 / 2).attr("text-anchor", "end").attr("dominant-baseline", "middle").attr("font-size", "11px").attr("font-weight", "500").attr("fill", "#a4a49f").text(d.항목);
+      g.append("text").attr("x", 바영역W + 6).attr("y", y + 바높이 / 2).attr("dominant-baseline", "middle").attr("font-size", "11px").attr("font-family", "IBM Plex Mono, monospace").attr("font-weight", "600").attr("fill", d.색).text(Math.round(d.값));
     });
   }
 
@@ -644,6 +647,8 @@ export default function DashboardPage() {
     const 시각 = new Date().toLocaleString("ko-KR");
     const 결과내용 = 결과HTML;
     const 임시div = document.createElement("div");
+    // 화면은 어두운 판이지만 종이는 흰색이다 — 토큰을 밝은 판으로 되돌린다.
+    임시div.className = "theme-light";
     임시div.style.cssText = "position:absolute;top:0;left:0;width:794px;background:#ffffff;padding:40px 44px;z-index:9999;font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;color:#1a1a2e;box-sizing:border-box;";
     임시div.innerHTML = `
       <div style="padding-bottom:16px;border-bottom:3px solid #0f172a;margin-bottom:24px;">
@@ -682,7 +687,7 @@ export default function DashboardPage() {
 
   const 단계이름 = ["사건 요약", "공격 의도", "숙련도 분석", "대응 권고", "리포트 서술"];
   const 건강점수 = 선택공격 ? Math.round(100 - 선택공격.위험점수) : null;
-  const 활성색 = 건강점수 !== null ? (건강점수 < 34 ? "#ef4444" : 건강점수 < 67 ? "#f59e0b" : "#22c55e") : "#22c55e";
+  const 활성색 = 건강점수 !== null ? (건강점수 < 34 ? "#ff4d6d" : 건강점수 < 67 ? "#ffc861" : "#c9f24a") : "#c9f24a";
   const 건강라벨 = 건강점수 !== null ? (건강점수 < 34 ? "위험" : 건강점수 < 67 ? "주의" : "양호") : "";
 
   // 개요 스탯 클릭 필터 적용
@@ -713,258 +718,305 @@ export default function DashboardPage() {
     <>
       <style>{`
         body { background: var(--bg); color: var(--text); min-height: 100vh; }
-        header { position: sticky; top: 0; z-index: 50; background: var(--chrome); color: var(--chrome-text); padding: 0 26px; display: flex; align-items: center; justify-content: space-between; height: 60px; border-bottom: 1px solid var(--chrome-border); }
-        .헤더왼쪽 { display: flex; align-items: center; gap: 11px; }
-        .헤더제목 { font-size: 1rem; font-weight: 800; letter-spacing: -0.01em; color: var(--chrome-text); }
+        /* 뒤에 깔린 은은한 빛과 주사선 — 소개 사이트 히어로의 공기를 옅게 가져온다 */
+        .대시배경 { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+        .대시배경::before { content: ''; position: absolute; left: -12vw; top: -26vh; width: 52vw; height: 52vw; border-radius: 50%; background: var(--accent); opacity: 0.05; filter: blur(140px); animation: k-drift-a 18s ease-in-out infinite; }
+        .대시배경::after { content: ''; position: absolute; right: -10vw; bottom: -30vh; width: 40vw; height: 40vw; border-radius: 50%; background: #3f6bff; opacity: 0.07; filter: blur(150px); animation: k-drift-b 22s ease-in-out infinite; }
+
+        header { position: sticky; top: 0; z-index: 50; background: var(--chrome); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); color: var(--chrome-text); padding: 0 clamp(16px, 3vw, 40px); display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 64px; border-bottom: 1px solid var(--chrome-border); }
+        .헤더왼쪽 { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .헤더제목 { font-family: var(--display); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.03em; color: var(--chrome-text); white-space: nowrap; }
         .헤더제목 span { color: var(--chrome-accent); }
-        .헤더부제 { font-size: 0.7rem; color: var(--chrome-text-2); margin-top: 1px; }
+        .헤더부제 { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.1em; color: var(--text-3); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .헤더우측 { display: flex; align-items: center; gap: 10px; }
-        .세션칩 { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.06); border: 1px solid var(--chrome-border); border-radius: var(--radius-sm); padding: 5px 6px 5px 12px; }
-        .세션이메일 { font-family: var(--mono); font-size: 0.74rem; color: var(--chrome-text-2); }
-        .로그아웃 { font-size: 0.74rem; font-weight: 600; color: var(--chrome-text); background: rgba(255,255,255,0.08); border: 1px solid var(--chrome-border); border-radius: 3px; padding: 4px 9px; cursor: pointer; }
-        .로그아웃:hover { background: rgba(255,255,255,0.16); }
-        .서버상태칩 { display: flex; align-items: center; gap: 7px; background: rgba(255,255,255,0.06); border: 1px solid var(--chrome-border); border-radius: 20px; padding: 6px 13px; font-size: 0.78rem; color: var(--chrome-text-2); font-weight: 500; }
-        .레이아웃 { display: grid; grid-template-columns: minmax(400px, 460px) minmax(0, 1fr); gap: 20px; padding: 20px 28px; max-width: 1760px; margin: 0 auto; align-items: start; }
+        .세션칩 { display: flex; align-items: center; gap: 10px; background: rgba(244,244,241,0.03); border: 1px solid rgba(244,244,241,0.14); border-radius: 999px; padding: 4px 4px 4px 14px; }
+        .세션이메일 { font-family: var(--mono); font-size: 0.72rem; color: var(--chrome-text-2); }
+        .로그아웃 { font-family: var(--mono); font-size: 0.7rem; font-weight: 600; color: var(--text); background: rgba(244,244,241,0.06); border: 1px solid rgba(244,244,241,0.14); border-radius: 999px; padding: 6px 12px; cursor: pointer; transition: all .3s var(--ease); }
+        .로그아웃:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+        .서버상태칩 { display: flex; align-items: center; gap: 8px; background: rgba(244,244,241,0.03); border: 1px solid rgba(244,244,241,0.14); border-radius: 999px; padding: 7px 14px; font-family: var(--mono); font-size: 0.72rem; color: var(--chrome-text-2); }
+        @media (max-width: 760px) { .헤더부제, .세션이메일 { display: none; } }
+
+        .레이아웃 { display: grid; grid-template-columns: minmax(400px, 460px) minmax(0, 1fr); gap: 14px; padding: 14px clamp(16px, 3vw, 40px); max-width: 1760px; margin: 0 auto; align-items: start; }
         @media (max-width: 1100px) { .레이아웃 { grid-template-columns: 1fr; } }
-        .맵섹션 { max-width: 1760px; margin: 0 auto; padding: 24px 28px 0; }
-        .모델밴드 { max-width: 1760px; margin: 0 auto; padding: 16px 28px 0; }
-        .모델카드 { display: flex; flex-direction: column; gap: 14px; }
-        .모델헤더 { display: flex; align-items: center; gap: 12px; }
-        .모델아이콘 { width: 40px; height: 40px; border-radius: 10px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .모델아이콘 .icon { width: 22px; height: 22px; }
-        .모델제목 { font-size: 1rem; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 8px; }
-        .모델배지 { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: #eef2ff; color: var(--accent); }
-        .모델부제 { font-size: 0.76rem; color: var(--text-3); margin-top: 3px; }
-        .모델지표그리드 { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
-        .모델지표 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; text-align: center; }
-        .모델지표값 { display: block; font-size: 1.3rem; font-weight: 800; color: var(--accent); }
-        .모델지표라벨 { display: block; font-size: 0.7rem; color: var(--text-3); margin-top: 3px; }
-        .교차검증 { margin: 4px 0 12px; }
-        .교차행 { display: grid; grid-template-columns: 110px minmax(0,1fr) 52px; gap: 12px; align-items: center; }
+        .맵섹션 { max-width: 1760px; margin: 0 auto; padding: 14px clamp(16px, 3vw, 40px) 56px; }
+        .모델밴드 { max-width: 1760px; margin: 0 auto; padding: 14px clamp(16px, 3vw, 40px) 0; }
+        .모델카드 { display: flex; flex-direction: column; gap: 16px; }
+        .모델헤더 { display: flex; align-items: center; gap: 14px; }
+        .모델아이콘 { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--accent); color: var(--accent); background: var(--accent-soft); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .모델아이콘 .icon { width: 20px; height: 20px; }
+        .모델제목 { font-family: var(--display); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text); display: flex; align-items: center; gap: 10px; }
+        .모델배지 { font-family: var(--mono); font-size: 0.66rem; font-weight: 500; letter-spacing: 0.1em; padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); }
+        .모델부제 { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.04em; color: var(--text-3); margin-top: 4px; }
+        .모델지표그리드 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; }
+        .모델지표 { padding: 16px 18px; border-left: 1px solid var(--border); display: grid; gap: 6px; }
+        .모델지표:first-child { border-left: none; }
+        .모델지표값 { display: block; order: 2; font-family: var(--display); font-size: 1.7rem; font-weight: 700; letter-spacing: -0.035em; color: var(--accent); line-height: 1; }
+        .모델지표:nth-child(2) .모델지표값 { color: var(--p1); }
+        .모델지표:nth-child(3) .모델지표값 { color: var(--p2); }
+        .모델지표:nth-child(4) .모델지표값 { color: var(--p3); }
+        .모델지표라벨 { display: block; order: 1; font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.16em; color: var(--text-3); }
+        .교차검증 { margin: 2px 0 4px; }
+        .교차행 { display: grid; grid-template-columns: 120px minmax(0,1fr) 60px; gap: 14px; align-items: center; }
         .교차라벨 { font-size: 0.84rem; font-weight: 600; }
-        .교차막대 { height: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
-        .교차채움 { display: block; height: 100%; background: var(--accent); }
-        .교차값 { font-family: var(--mono); font-size: 0.86rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
-        .교차설명 { font-size: 0.79rem; line-height: 1.6; color: var(--text-2); margin-top: 8px; }
-        .모델설명 { font-size: 0.86rem; line-height: 1.65; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
-        .모델배지-규칙 { background: #fdf2e3; color: #8a5a10; border-color: #e8c98d; }
-        .모델라벨칩들 { display: flex; flex-wrap: wrap; gap: 6px; }
-        .모델라벨칩 { font-size: 0.72rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-2); }
-        .해설카드 { display: flex; flex-direction: column; gap: 9px; padding: 14px 16px; }
-        .해설머리 { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-        .해설제목 { font-size: 0.86rem; font-weight: 700; color: var(--text); }
-        .해설꼬리표 { font-size: 0.68rem; font-weight: 600; padding: 2px 7px; border-radius: 20px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); }
-        .해설즉시 { margin-left: auto; font-size: 0.7rem; color: var(--green); font-weight: 600; }
-        .해설본문 { font-size: 0.85rem; line-height: 1.68; color: var(--text); }
-        .해설대응 { font-size: 0.8rem; line-height: 1.62; color: var(--text-2); background: var(--surface-3); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 9px 11px; }
-        .해설대응 b { color: var(--accent); font-weight: 700; }
-        .자산밴드 { max-width: 1760px; margin: 0 auto; padding: 16px 28px 0; }
-        .자산카드 { display: flex; flex-direction: column; gap: 12px; }
-        .자산입력줄 { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-start; }
-        .자산입력 { flex: 1 1 320px; max-width: 520px; min-width: 0; font-family: var(--mono); font-size: 0.82rem; line-height: 1.6; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-2); color: var(--text); resize: vertical; min-height: 44px; }
-        .자산입력:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-        .자산버튼 { font-size: 0.8rem; font-weight: 600; padding: 9px 16px; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: var(--radius-sm); cursor: pointer; font-family: inherit; }
-        .자산버튼:hover { filter: brightness(1.08); }
-        .자산결론 { font-size: 0.88rem; line-height: 1.6; color: var(--text-2); }
+        .교차막대 { height: 6px; background: rgba(244,244,241,0.08); border-radius: 999px; overflow: hidden; }
+        .교차채움 { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+        .교차값 { font-family: var(--mono); font-size: 0.86rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); }
+        .교차설명 { font-size: 0.79rem; line-height: 1.7; color: var(--text-2); margin-top: 10px; }
+        .교차설명 b { color: var(--text); }
+        .모델설명 { font-size: 0.86rem; line-height: 1.75; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-left: 2px solid var(--accent); border-radius: var(--radius-sm); padding: 14px 16px; }
+        .모델설명 b { color: var(--text); }
+        .모델배지-규칙 { background: var(--amber-soft); color: var(--amber); border-color: var(--amber-border); }
+        .모델라벨칩들 { display: flex; flex-wrap: wrap; gap: 8px; }
+        .모델라벨칩 { font-family: var(--mono); font-size: 0.74rem; padding: 6px 14px; border-radius: 999px; border: 1px solid rgba(244,244,241,0.16); color: rgba(244,244,241,0.85); transition: all .3s var(--ease); }
+        .모델라벨칩:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); transform: translateY(-2px); }
+
+        .해설카드 { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; }
+        .해설머리 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .해설제목 { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+        .해설꼬리표 { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-2); }
+        .해설즉시 { margin-left: auto; font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.06em; color: var(--accent); }
+        .해설본문 { font-size: 0.86rem; line-height: 1.75; color: var(--text); }
+        .해설대응 { font-size: 0.82rem; line-height: 1.7; color: var(--text-2); background: var(--surface-2); border-left: 2px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 10px 13px; }
+        .해설대응 b { color: var(--accent); font-weight: 600; }
+
+        .자산밴드 { max-width: 1760px; margin: 0 auto; padding: 14px clamp(16px, 3vw, 40px) 0; }
+        .자산카드 { display: flex; flex-direction: column; gap: 14px; }
+        .자산입력줄 { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+        .자산입력 { flex: 1 1 320px; max-width: 520px; min-width: 0; font-family: var(--mono); font-size: 0.82rem; line-height: 1.6; padding: 11px 14px; border: 1px solid var(--border-strong); border-radius: 14px; background: var(--bg); color: var(--text); resize: vertical; min-height: 48px; transition: border-color .2s; }
+        .자산입력::placeholder { color: rgba(244,244,241,0.26); }
+        .자산입력:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+        .자산버튼 { font-family: var(--mono); font-size: 0.8rem; font-weight: 700; padding: 13px 22px; border: none; background: var(--accent); color: var(--on-accent); border-radius: 999px; cursor: pointer; transition: transform .3s var(--ease); }
+        .자산버튼:hover:not(:disabled) { transform: translateY(-3px); }
+        .자산버튼:disabled { opacity: .6; cursor: default; }
+        .자산결론 { font-size: 0.9rem; line-height: 1.6; color: var(--text-2); }
         .자산결론 b { color: var(--red); font-variant-numeric: tabular-nums; }
-        .자산결론 b.무사 { color: var(--green); }
+        .자산결론 b.무사 { color: var(--accent); }
         /* 전폭으로 퍼지면 포트와 값이 화면 양 끝으로 벌어져 눈이 못 따라간다. */
         .노출표 { width: 100%; max-width: 780px; border-collapse: collapse; font-size: 0.84rem; }
-        .노출표 th { text-align: right; font-weight: 600; color: var(--text-3); font-size: 0.72rem; letter-spacing: .03em; padding: 6px 12px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
+        .노출표 th { text-align: right; font-family: var(--mono); font-weight: 500; color: var(--text-3); font-size: 0.64rem; letter-spacing: .14em; padding: 8px 12px; border-bottom: 1px solid var(--border-strong); white-space: nowrap; }
         .노출표 th:first-child, .노출표 td:first-child { text-align: left; }
-        .노출표 td { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); color: var(--text-2); }
+        .노출표 td { padding: 10px 12px; border-bottom: 1px solid var(--border); text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); color: var(--text-2); }
         .노출표 tr:last-child td { border-bottom: none; }
         /* 고위험을 받고 있는 포트는 한눈에 갈라야 한다. */
-        .노출표 td:first-child { border-left: 3px solid transparent; }
+        .노출표 td:first-child { border-left: 2px solid transparent; }
         .노출표 tr.위험 td:first-child { border-left-color: var(--red); }
         .노출표 tr.위험 .노출고위험 { color: var(--red); font-weight: 700; }
         .노출표 tr:not(.위험) .노출포트 { color: var(--text-3); font-weight: 600; }
         .노출포트 { font-weight: 700; color: var(--text); font-size: 0.92rem; }
-        .패턴밴드 { max-width: 1760px; margin: 0 auto; padding: 16px 28px 0; }
-        .패턴헤더 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; margin-bottom: 12px; }
-        .패턴제목 { font-size: 1rem; font-weight: 700; color: var(--text); }
-        .패턴요지 { font-size: 0.8rem; color: var(--text-3); }
+
+        .패턴밴드 { max-width: 1760px; margin: 0 auto; padding: 14px clamp(16px, 3vw, 40px) 0; }
+        .패턴헤더 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 14px; }
+        .패턴제목 { font-family: var(--display); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+        .패턴요지 { font-size: 0.82rem; line-height: 1.7; color: var(--text-2); }
         .패턴요지 b { color: var(--accent); font-variant-numeric: tabular-nums; }
         /* 좁으면 한 줄에 서너 어절밖에 못 들어가 줄바꿈이 잦다. */
-        .패턴그리드 { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 12px; }
-        .패턴카드 { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 15px 17px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-        .패턴상단 { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .패턴그리드 { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 10px; }
+        @media (max-width: 520px) { .패턴그리드 { grid-template-columns: 1fr; } }
+        .패턴카드 { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; display: flex; flex-direction: column; gap: 12px; min-width: 0; transition: all .35s var(--ease); animation: k-in .5s var(--ease-out) both; }
+        .패턴카드:hover { border-color: var(--accent); transform: translateY(-4px); }
+        .패턴상단 { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
         /* 카드의 주 정보는 건수다. 제목처럼 세운다. */
-        .패턴건수 { font-size: 1.32rem; font-weight: 800; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
-        .패턴건수 span { font-size: 0.78rem; font-weight: 600; color: var(--text-3); margin-left: 2px; }
-        .패턴키 { font-family: var(--mono); font-size: 0.76rem; color: var(--text-2); }
-        .패턴곁수치 { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.75rem; color: var(--text-3); font-variant-numeric: tabular-nums; }
-        .패턴곁수치 b { font-family: var(--mono); font-weight: 600; color: var(--text-2); }
-        .패턴요약 { font-size: 0.86rem; line-height: 1.68; color: var(--text); }
-        /* 대응은 "지금 할 일" 이라 요약과 확실히 갈라야 한다. 배경색 차이만으로는
-           흰 카드 위에서 거의 안 보여서(surface-2 는 #f8fafc) 좌측 강조선을 쓴다. */
-        .패턴대응 { font-size: 0.82rem; line-height: 1.62; color: var(--text-2); background: var(--surface-3); border-left: 3px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 10px 12px; }
-        .패턴대응 b { color: var(--accent); font-weight: 700; }
-        .패턴기법 { display: flex; flex-wrap: wrap; gap: 5px; }
-        .패턴기법 span { font-family: var(--mono); font-size: 0.68rem; padding: 2px 7px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); }
-        .맵아이프레임 { width: 100%; height: 640px; border: none; border-radius: 10px; background: #020817; display: block; }
+        .패턴건수 { font-family: var(--display); font-size: 1.9rem; font-weight: 700; letter-spacing: -0.04em; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1; }
+        .패턴건수 span { font-family: var(--font); font-size: 0.8rem; font-weight: 500; letter-spacing: 0; color: var(--text-3); margin-left: 3px; }
+        .패턴키 { font-family: var(--mono); font-size: 0.74rem; color: var(--text-2); }
+        .패턴곁수치 { display: flex; gap: 14px; flex-wrap: wrap; font-size: 0.75rem; color: var(--text-3); font-variant-numeric: tabular-nums; }
+        .패턴곁수치 b { font-family: var(--mono); font-weight: 600; color: var(--p1); }
+        .패턴요약 { font-size: 0.86rem; line-height: 1.75; color: var(--text); }
+        /* 대응은 "지금 할 일" 이라 요약과 확실히 갈라야 한다 — 좌측 강조선. */
+        .패턴대응 { font-size: 0.82rem; line-height: 1.7; color: var(--text-2); background: var(--surface-2); border-left: 2px solid var(--accent); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 11px 14px; }
+        .패턴대응 b { color: var(--accent); font-weight: 600; }
+        .패턴기법 { display: flex; flex-wrap: wrap; gap: 6px; }
+        .패턴기법 span { font-family: var(--mono); font-size: 0.68rem; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border-strong); color: var(--text-2); }
+
+        .맵아이프레임 { width: 100%; height: 640px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); display: block; }
         @media (max-width: 900px) { .맵아이프레임 { height: 440px; } }
-        .맵토글 { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font-size: 0.74rem; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 5px 11px; }
-        .맵토글:hover { border-color: var(--accent); color: var(--accent); }
-        .개요밴드 { max-width: 1760px; margin: 0 auto; padding: 24px 28px 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-        .스탯카드 { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow-sm); padding: 15px 18px; display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; cursor: pointer; font-family: inherit; transition: all 0.15s; }
-        .스탯카드:hover { border-color: var(--accent-border); transform: translateY(-1px); box-shadow: var(--shadow-md); }
-        .스탯카드.활성 { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.14); }
-        .스탯아이콘 { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.35rem; flex-shrink: 0; }
-        .스탯아이콘.이벤트 { background: var(--accent-soft); color: var(--accent); }
-        /* 고위험은 다른 지표와 무게가 다르다 — 건수가 있을 때만 테두리로 드러낸다. */
+        .맵토글 { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-family: var(--mono); font-size: 0.72rem; color: rgba(244,244,241,0.7); border: 1px solid rgba(244,244,241,0.14); background: rgba(244,244,241,0.03); border-radius: 999px; padding: 7px 14px; transition: all .3s var(--ease); }
+        .맵토글:hover { background: var(--accent); border-color: var(--accent); color: var(--on-accent); transform: translateY(-2px); }
+
+        /* ── 개요 — 소개 사이트 히어로의 수치 칸과 같은 모양 ── */
+        .개요밴드 { max-width: 1760px; margin: 0 auto; padding: 22px clamp(16px, 3vw, 40px) 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .스탯카드 { position: relative; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; display: grid; gap: 8px; width: 100%; text-align: left; cursor: pointer; font-family: inherit; color: var(--text); transition: all 0.35s var(--ease); animation: k-in .5s var(--ease-out) both; }
+        .스탯카드:nth-child(2) { animation-delay: .06s; } .스탯카드:nth-child(3) { animation-delay: .12s; } .스탯카드:nth-child(4) { animation-delay: .18s; }
+        .스탯카드:hover { border-color: var(--accent); transform: translateY(-5px); }
+        .스탯카드.활성 { border-color: var(--accent); background: linear-gradient(180deg, var(--accent-soft), transparent 70%), var(--surface); }
+        .스탯카드.활성::after { content: 'FILTER'; position: absolute; top: 18px; right: 20px; font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.18em; color: var(--accent); }
+        .스탯머리 { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.18em; color: rgba(244,244,241,0.42); }
+        .스탯아이콘 { display: inline-flex; font-size: 0.9rem; }
+        .스탯아이콘.이벤트 { color: var(--p0); }
+        .스탯아이콘.공격 { color: var(--p1); }
+        .스탯아이콘.고위험 { color: var(--p3); }
+        .스탯아이콘.llm { color: var(--p2); }
+        .스탯값 { font-family: var(--display); font-size: clamp(1.8rem, 2.6vw, 2.4rem); font-weight: 700; letter-spacing: -0.035em; line-height: 1; font-variant-numeric: tabular-nums; }
+        .스탯카드:nth-child(1) .스탯값 { color: var(--p0); }
+        .스탯카드:nth-child(2) .스탯값 { color: var(--p1); }
+        .스탯카드:nth-child(3) .스탯값 { color: var(--text); }
+        .스탯카드:nth-child(4) .스탯값 { color: var(--p2); }
+        /* 고위험은 다른 지표와 무게가 다르다 — 건수가 있을 때만 드러낸다. */
         .스탯카드.위험강조.주의 { border-color: var(--red-border); }
         .스탯카드.위험강조.주의 .스탯값 { color: var(--red); }
-        .스탯아이콘.공격 { background: var(--red-soft); color: var(--red); }
-        .스탯아이콘.고위험 { background: var(--amber-soft); color: var(--amber); }
-        .스탯아이콘.llm { background: #f5f3ff; color: #7c3aed; }
-        .스탯값 { font-size: 1.55rem; font-weight: 800; line-height: 1; color: var(--text); }
-        .스탯라벨 { font-size: 0.75rem; color: var(--text-3); margin-top: 5px; }
-        .단계카드헤더 { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; }
-        .단계번호 { width: 24px; height: 24px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 0.78rem; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .단계제목 { font-size: 0.92rem; font-weight: 800; color: var(--text); }
-        .단계부제 { font-size: 0.74rem; color: var(--text-3); margin-left: auto; }
-        .분류그리드 { display: grid; grid-template-columns: repeat(auto-fit, minmax(125px, 1fr)); gap: 10px; }
-        .분류항목 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; }
-        .분류라벨 { font-size: 0.7rem; color: var(--text-3); display: block; margin-bottom: 4px; }
-        .분류값 { font-size: 0.95rem; font-weight: 700; color: var(--text); }
+        .스탯라벨 { font-size: 0.76rem; color: rgba(244,244,241,0.5); }
         @media (max-width: 900px) { .개요밴드 { grid-template-columns: repeat(2,1fr); } }
-        .카드 { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow-sm); }
-        .섹션헤더 { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
-        .섹션번호 { width: 22px; height: 22px; border-radius: 7px; background: var(--accent); color: white; font-size: 0.72rem; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .섹션제목 { font-size: 0.88rem; font-weight: 700; color: var(--text); }
-        .섹션설명 { font-size: 0.75rem; color: var(--text-3); margin-left: auto; display: inline-flex; align-items: center; gap: 4px; }
+
+        .단계카드헤더 { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .단계번호 { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.16em; color: var(--accent); flex-shrink: 0; }
+        .단계제목 { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+        .단계부제 { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.06em; color: var(--text-3); margin-left: auto; }
+        .분류그리드 { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 8px; }
+        .분류항목 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; }
+        .분류라벨 { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.14em; color: var(--text-3); display: block; margin-bottom: 6px; }
+        .분류값 { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+
+        .카드 { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 22px; animation: k-in .5s var(--ease-out) both; }
+        .섹션헤더 { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+        .섹션번호 { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.16em; color: var(--accent); flex-shrink: 0; }
+        .섹션제목 { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+        .섹션설명 { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em; color: var(--text-3); margin-left: auto; display: inline-flex; align-items: center; gap: 6px; transition: color .2s; }
+        .섹션설명[title]:hover { color: var(--accent); }
         /* 바깥 패널에 스크롤을 걸면 목록 스크롤과 겹쳐 중첩 스크롤이 된다.
            페이지가 자연스럽게 스크롤되게 두고, 스크롤은 목록에만 준다. */
-        .왼쪽패널 { display: flex; flex-direction: column; gap: 12px; }
+        .왼쪽패널 { display: flex; flex-direction: column; gap: 10px; }
         .공격목록 { display: flex; flex-direction: column; gap: 6px; overflow-y: auto;
                     max-height: clamp(320px, calc(100vh - 400px), 640px); padding-right: 4px; }
-        .공격목록::-webkit-scrollbar { width: 8px; }
-        .공격목록::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
-        .왼쪽패널::-webkit-scrollbar { width: 4px; }
-        .왼쪽패널::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 2px; }
-                /* 위험도는 숫자·배지만이 아니라 형태로도 읽혀야 한다 — 왼쪽 띠로 스캔 가능하게. */
-        .시나리오버튼 { width: 100%; text-align: left; padding: 10px 13px 10px 15px; border: 1px solid var(--border); border-left: 3px solid var(--border-strong); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--surface); cursor: pointer; transition: all 0.16s; display: block; }
+        /* 위험도는 숫자·배지만이 아니라 형태로도 읽혀야 한다 — 왼쪽 띠로 스캔 가능하게. */
+        .시나리오버튼 { width: 100%; text-align: left; padding: 12px 14px 12px 16px; border: 1px solid var(--border); border-left: 2px solid var(--border-strong); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--surface-2); color: var(--text); cursor: pointer; transition: all 0.3s var(--ease); display: block; }
         .시나리오버튼.위험띠-CRITICAL { border-left-color: var(--red); }
-        .시나리오버튼.위험띠-HIGH     { border-left-color: var(--red); }
+        .시나리오버튼.위험띠-HIGH     { border-left-color: var(--orange); }
         .시나리오버튼.위험띠-MEDIUM   { border-left-color: var(--amber); }
         .시나리오버튼.위험띠-LOW      { border-left-color: var(--border-strong); }
-        .시나리오버튼:hover { border-color: var(--accent-border); background: var(--accent-soft); }
-        .시나리오버튼.선택됨 { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent-border); }
-        .시나리오헤더행 { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
-        .시나리오아이콘 { font-size: 1rem; flex-shrink: 0; display: inline-flex; }
-        .시나리오이름 { font-weight: 700; font-size: 0.85rem; color: var(--text); flex: 1; font-family: var(--mono); }
-        .시나리오설명 { font-size: 0.74rem; color: var(--text-2); display: block; padding-left: 26px; }
-        .위험배지 { font-size: 0.65rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; white-space: nowrap; border: 1px solid transparent; }
-        .위험배지.높음 { background: var(--red-soft); color: var(--red); border-color: var(--red-border); }
+        .시나리오버튼:hover { border-color: rgba(244,244,241,0.22); transform: translateX(4px); }
+        .시나리오버튼.선택됨 { border-color: var(--accent); background: var(--accent-soft); }
+        .시나리오헤더행 { display: flex; align-items: center; gap: 9px; margin-bottom: 4px; }
+        .시나리오아이콘 { font-size: 0.95rem; flex-shrink: 0; display: inline-flex; }
+        .시나리오이름 { font-weight: 600; font-size: 0.86rem; color: var(--text); flex: 1; }
+        .시나리오설명 { font-family: var(--mono); font-size: 0.7rem; color: var(--text-3); display: block; padding-left: 25px; }
+        .위험배지 { font-family: var(--mono); font-size: 0.62rem; font-weight: 500; letter-spacing: 0.08em; padding: 3px 9px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; }
+        .위험배지.높음 { background: var(--orange-soft); color: var(--orange); border-color: var(--orange-border); }
         .위험배지.보통 { background: var(--amber-soft); color: var(--amber); border-color: var(--amber-border); }
-        .위험배지.치명 { background: #1e1b2e; color: #fca5a5; }
-        .게이지카드제목 { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 0.88rem; font-weight: 700; color: var(--text); }
+        .위험배지.치명 { background: var(--red); color: var(--on-accent); border-color: var(--red); }
+        .게이지카드제목 { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 0.9rem; font-weight: 600; color: var(--text); }
         .게이지카드제목 .icon { color: var(--accent); }
-        .게이지레이블 { text-align: center; font-size: 0.77rem; color: var(--text-2); margin-top: 6px; }
-        #분석시작버튼 { width: 100%; padding: 14px; border-radius: var(--radius-sm); border: none; background: var(--text); color: white; font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: all 0.18s; display: flex; align-items: center; justify-content: center; gap: 8px; }
-        #분석시작버튼:hover:not(:disabled) { background: #1e293b; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(15,23,42,0.22); }
-        #분석시작버튼:disabled { background: #94a3b8; cursor: not-allowed; transform: none; box-shadow: none; }
-        #PDF버튼 { width: 100%; padding: 11px; border-radius: var(--radius-sm); border: none; background: var(--accent); color: white; font-size: 0.88rem; font-weight: 700; cursor: pointer; transition: all 0.18s; display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 4px; }
-        #PDF버튼:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(99,102,241,0.3); }
-        .오른쪽패널 { display: flex; flex-direction: column; gap: 16px; }
-        .그래프카드헤더 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-        .그래프카드헤더 .제목 { font-size: 0.88rem; font-weight: 700; color: var(--text); display: inline-flex; align-items: center; gap: 8px; }
+        .게이지레이블 { text-align: center; font-family: var(--mono); font-size: 0.72rem; color: var(--text-2); margin-top: 8px; }
+
+        #분석시작버튼 { width: 100%; padding: 17px; border-radius: 999px; border: none; background: var(--accent); color: var(--on-accent); font-family: var(--mono); font-size: 0.86rem; font-weight: 700; letter-spacing: 0.02em; cursor: pointer; transition: all 0.3s var(--ease); display: flex; align-items: center; justify-content: center; gap: 9px; }
+        #분석시작버튼:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-3px); }
+        #분석시작버튼:disabled { background: rgba(244,244,241,0.08); color: var(--text-3); cursor: not-allowed; transform: none; }
+        #PDF버튼 { width: 100%; padding: 14px; border-radius: 999px; border: 1px solid rgba(244,244,241,0.18); background: transparent; color: var(--text); font-family: var(--mono); font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.3s var(--ease); display: flex; align-items: center; justify-content: center; gap: 8px; }
+        #PDF버튼:hover { background: rgba(244,244,241,0.08); transform: translateY(-3px); }
+
+        .오른쪽패널 { display: flex; flex-direction: column; gap: 10px; }
+        .그래프카드헤더 { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .그래프카드헤더 .제목 { font-size: 0.95rem; font-weight: 600; color: var(--text); display: inline-flex; align-items: center; gap: 9px; }
         .그래프카드헤더 .제목 .icon { color: var(--accent); }
-        #네트워크SVG { width: 100%; height: 260px; border-radius: var(--radius-sm); background: linear-gradient(180deg,var(--surface-2) 0%,var(--surface-3) 100%); }
-        .그래프범례 { display: flex; gap: 14px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
-        .범례항목 { display: flex; align-items: center; gap: 5px; font-size: 0.74rem; color: #64748b; }
+        #네트워크SVG { width: 100%; height: 260px; border-radius: var(--radius-sm); border: 1px solid var(--border); background-color: var(--bg);
+          background-image: linear-gradient(rgba(244,244,241,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(244,244,241,0.05) 1px, transparent 1px);
+          background-size: 32px 32px; }
+        .그래프범례 { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+        .범례항목 { display: flex; align-items: center; gap: 6px; font-size: 0.74rem; color: var(--text-2); }
         .범례점 { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
-        .단계목록 { display: flex; gap: 7px; flex-wrap: wrap; }
-        .단계칩 { padding: 5px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; background: #f1f5f9; color: #94a3b8; transition: all 0.3s; border: 1.5px solid transparent; }
-        .단계칩.진행중 { background: #fffbeb; color: #92400e; border-color: #fcd34d; animation: pulse 1.5s infinite; }
-        .단계칩.완료 { background: #f0fdf4; color: #166534; border-color: #86efac; }
-        .스트리밍헤더 { background: #0f172a; border-radius: 12px 12px 0 0; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; }
-        .스트리밍헤더왼쪽 { display: flex; align-items: center; gap: 8px; }
-        .스트리밍점 { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 8px #22c55e; animation: pulse 1.5s infinite; }
-        .스트리밍제목 { color: #94a3b8; font-size: 0.78rem; font-family: monospace; }
-        .스트리밍배지 { background: rgba(99,102,241,0.2); color: #a5b4fc; font-size: 0.68rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
-        .스트리밍본문 { background: #020817; border-radius: 0 0 12px 12px; padding: 14px 16px; max-height: 220px; overflow-y: auto; }
-        #스트리밍텍스트 { font-family: "SF Mono","Fira Code",monospace; font-size: 0.79rem; color: #a5f3fc; line-height: 1.7; white-space: pre-wrap; word-break: break-all; }
-        .커서 { display: inline-block; width: 7px; height: 14px; background: #a5f3fc; animation: 깜빡 0.8s infinite; vertical-align: text-bottom; border-radius: 1px; }
-        @keyframes 깜빡 { 0%,100%{opacity:1} 50%{opacity:0} }
-        .결과카드헤더 { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 2px solid #f1f5f9; }
-        .결과카드제목 { font-size: 1rem; font-weight: 800; color: #1e293b; }
-        .결과카드부제 { font-size: 0.75rem; color: #94a3b8; margin-left: auto; }
-        .요약카드 { background: #f8fafc; border-radius: 12px; padding: 16px; }
-        .요약텍스트 { font-size: 0.92rem; line-height: 1.75; color: #1e293b; margin-bottom: 14px; }
-        .포인트목록 { list-style: none; display: flex; flex-direction: column; gap: 6px; }
-        .포인트목록 li { display: flex; align-items: flex-start; gap: 8px; font-size: 0.83rem; color: #374151; line-height: 1.6; }
-        .포인트목록 li::before { content: "▸"; color: #6366f1; flex-shrink: 0; margin-top: 2px; font-size: 0.75rem; }
-        .공격명배지 { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; background: #eef2ff; color: #3730a3; padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; border: 1px solid #c7d2fe; }
-        .결과그리드 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .분석칩카드 { background: #f8fafc; border-radius: 12px; padding: 14px; }
-        .분석칩섹션제목 { font-size: 0.76rem; font-weight: 700; color: #64748b; margin-bottom: 10px; }
-        .큰배지 { font-size: 0.85rem; font-weight: 800; padding: 5px 14px; border-radius: 8px; display: inline-block; margin-bottom: 10px; }
-        .큰배지.정보수집,.큰배지.취약점탐색 { background: #dbeafe; color: #1d4ed8; }
-        .큰배지.침투시도,.큰배지.데이터탈취 { background: #fee2e2; color: #dc2626; }
-        .큰배지.서비스방해 { background: #ffedd5; color: #c2410c; }
-        .큰배지.불명 { background: #f1f5f9; color: #64748b; }
-        .큰배지.초보 { background: #dcfce7; color: #166534; }
-        .큰배지.중급 { background: #fef9c3; color: #92400e; }
-        .큰배지.고급 { background: #fee2e2; color: #dc2626; }
+        .범례꼬리 { margin-left: auto; font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.04em; color: var(--text-3); }
+        .단계목록 { display: flex; gap: 8px; flex-wrap: wrap; }
+        .단계칩 { padding: 7px 14px; border-radius: 999px; font-family: var(--mono); font-size: 0.72rem; background: transparent; color: var(--text-3); transition: all 0.3s; border: 1px solid var(--border-strong); }
+        .단계칩.진행중 { background: var(--amber-soft); color: var(--amber); border-color: var(--amber-border); animation: pulse 1.5s infinite; }
+        .단계칩.완료 { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+
+        .스트리밍헤더 { background: var(--bg-2); border-bottom: 1px solid var(--border); padding: 12px 18px; display: flex; align-items: center; justify-content: space-between; }
+        .스트리밍헤더왼쪽 { display: flex; align-items: center; gap: 9px; }
+        .스트리밍점 { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: k-pulse 1.3s ease-in-out infinite; }
+        .스트리밍제목 { color: var(--text-2); font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.16em; }
+        .스트리밍배지 { background: var(--accent); color: var(--on-accent); font-family: var(--mono); font-size: 0.62rem; font-weight: 700; letter-spacing: 0.14em; padding: 3px 10px; border-radius: 999px; }
+        .스트리밍본문 { background: var(--bg); padding: 16px 18px; max-height: 240px; overflow-y: auto; }
+        #스트리밍텍스트 { font-family: var(--mono); font-size: 0.78rem; color: var(--accent); line-height: 1.75; white-space: pre-wrap; word-break: break-all; }
+        .커서 { display: inline-block; width: 7px; height: 14px; background: var(--accent); animation: k-blink 1s step-end infinite; vertical-align: text-bottom; }
+
+        .결과카드헤더 { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+        .결과카드제목 { font-family: var(--display); font-size: 1.15rem; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
+        .결과카드부제 { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.12em; color: var(--accent); margin-left: auto; }
+        .결과소제목 { margin-bottom: 8px; font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.18em; color: var(--text-3); }
+        .요약카드 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 18px; }
+        .요약텍스트 { font-size: 0.92rem; line-height: 1.8; color: var(--text); margin-bottom: 14px; }
+        .포인트목록 { list-style: none; display: flex; flex-direction: column; gap: 7px; }
+        .포인트목록 li { display: flex; align-items: flex-start; gap: 9px; font-size: 0.84rem; color: var(--text-2); line-height: 1.65; }
+        .포인트목록 li::before { content: "→"; font-family: var(--mono); color: var(--accent); flex-shrink: 0; font-size: 0.78rem; margin-top: 1px; }
+        .공격명배지 { display: inline-flex; align-items: center; gap: 5px; margin-top: 14px; background: var(--accent); color: var(--on-accent); padding: 5px 14px; border-radius: 999px; font-family: var(--mono); font-size: 0.74rem; font-weight: 600; rotate: -2deg; }
+        .결과그리드 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        @media (max-width: 640px) { .결과그리드 { grid-template-columns: 1fr; } }
+        .분석칩카드 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; height: 100%; }
+        .분석칩섹션제목 { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.16em; color: var(--text-3); margin-bottom: 12px; }
+        .큰배지 { font-size: 0.9rem; font-weight: 700; padding: 6px 16px; border-radius: 999px; display: inline-block; margin-bottom: 12px; border: 1px solid transparent; }
+        .큰배지.정보수집,.큰배지.취약점탐색 { background: var(--cyan-soft); color: var(--cyan); border-color: rgba(102,232,255,0.35); }
+        .큰배지.침투시도,.큰배지.데이터탈취 { background: var(--red-soft); color: var(--red); border-color: var(--red-border); }
+        .큰배지.서비스방해 { background: var(--orange-soft); color: var(--orange); border-color: var(--orange-border); }
+        .큰배지.불명 { background: transparent; color: var(--text-2); border-color: var(--border-strong); }
+        .큰배지.초보 { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-border); }
+        .큰배지.중급 { background: var(--amber-soft); color: var(--amber); border-color: var(--amber-border); }
+        .큰배지.고급 { background: var(--red-soft); color: var(--red); border-color: var(--red-border); }
         .신뢰도바컨테이너 { margin: 10px 0 8px; }
-        .신뢰도바컨테이너 .라벨 { font-size: 0.74rem; color: #64748b; margin-bottom: 5px; display: flex; justify-content: space-between; font-weight: 500; }
-        .신뢰도바 { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
-        .신뢰도바 .채움 { height: 100%; background: linear-gradient(90deg,#6366f1,#8b5cf6); border-radius: 4px; transition: width 0.9s cubic-bezier(0.4,0,0.2,1); }
-        .근거설명 { font-size: 0.81rem; color: #475569; line-height: 1.65; margin-top: 6px; }
-        .권고카드 { background: #f8fafc; border-radius: 12px; padding: 16px; }
-        .우선순위행 { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 0.8rem; color: #64748b; font-weight: 500; }
-        .권고섹션제목 { font-size: 0.76rem; font-weight: 700; margin-bottom: 7px; }
-        .권고섹션제목.즉각 { color: #dc2626; }
-        .권고섹션제목.장기 { color: #2563eb; }
-        .권고목록 { list-style: none; display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
-        .권고목록 li { font-size: 0.81rem; color: #374151; padding: 8px 11px; border-radius: 8px; line-height: 1.55; }
-        .권고목록.즉각 li { background: #fff1f2; border-left: 3px solid #f87171; }
-        .권고목록.장기 li { background: #eff6ff; border-left: 3px solid #60a5fa; }
-        .우선순위배지 { font-size: 0.74rem; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
-        .우선순위배지.즉시 { background: #fee2e2; color: #b91c1c; }
-        .우선순위배지.시간 { background: #fef9c3; color: #92400e; }
-        .우선순위배지.주 { background: #dbeafe; color: #1d4ed8; }
-        .리포트서술박스 { background: linear-gradient(135deg,#f0f9ff,#f8f4ff); border-left: 4px solid #6366f1; padding: 16px; border-radius: 0 12px 12px 0; font-size: 0.87rem; line-height: 1.85; color: #1e293b; }
-        .결과구분선 { border: none; border-top: 2px solid #f1f5f9; margin: 16px 0; }
-        .개관 { padding: 18px 20px 16px; }
-        .분포목록 { display: flex; flex-direction: column; gap: 9px; margin-top: 6px; }
-        .분포행 { display: grid; grid-template-columns: 116px minmax(0,1fr) 40px 46px; gap: 12px; align-items: center; }
+        .신뢰도바컨테이너 .라벨 { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 6px; display: flex; justify-content: space-between; text-transform: none; }
+        .신뢰도바 { height: 6px; background: rgba(244,244,241,0.08); border-radius: 999px; overflow: hidden; }
+        .신뢰도바 .채움 { height: 100%; background: linear-gradient(90deg, var(--p1), var(--accent)); border-radius: 999px; transition: width 0.9s cubic-bezier(0.4,0,0.2,1); }
+        .근거설명 { font-size: 0.82rem; color: var(--text-2); line-height: 1.7; margin-top: 8px; }
+        .권고카드 { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 18px; }
+        .우선순위행 { display: flex; align-items: center; gap: 9px; margin-bottom: 16px; font-size: 0.82rem; color: var(--text-2); }
+        .권고섹션제목 { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.14em; margin-bottom: 8px; }
+        .권고섹션제목.즉각 { color: var(--red); }
+        .권고섹션제목.장기 { color: var(--p1); }
+        .권고목록 { list-style: none; display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+        .권고목록 li { font-size: 0.82rem; color: var(--text); padding: 10px 13px; border-radius: 0 10px 10px 0; line-height: 1.6; background: var(--bg); }
+        .권고목록.즉각 li { border-left: 2px solid var(--red); }
+        .권고목록.장기 li { border-left: 2px solid var(--p1); }
+        .우선순위배지 { font-family: var(--mono); font-size: 0.7rem; font-weight: 600; padding: 4px 12px; border-radius: 999px; border: 1px solid transparent; }
+        .우선순위배지.즉시 { background: var(--red); color: var(--on-accent); }
+        .우선순위배지.시간 { background: var(--amber-soft); color: var(--amber); border-color: var(--amber-border); }
+        .우선순위배지.주 { background: var(--cyan-soft); color: var(--cyan); border-color: rgba(102,232,255,0.35); }
+        .리포트서술박스 { background: var(--surface-2); border: 1px solid var(--border); border-left: 2px solid var(--accent); padding: 18px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; font-size: 0.88rem; line-height: 1.9; color: var(--text); }
+        .결과구분선 { border: none; border-top: 1px solid var(--border); margin: 18px 0; }
+
+        .개관 { padding: 20px 22px 18px; }
+        .분포목록 { display: flex; flex-direction: column; gap: 11px; margin-top: 6px; }
+        .분포행 { display: grid; grid-template-columns: 116px minmax(0,1fr) 40px 46px; gap: 14px; align-items: center; }
         .분포이름 { font-size: 0.86rem; font-weight: 600; }
-        .분포막대 { height: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 2px; overflow: hidden; }
-        .분포채움 { display: block; height: 100%; }
+        .분포막대 { height: 6px; background: rgba(244,244,241,0.08); border-radius: 999px; overflow: hidden; }
+        .분포채움 { display: block; height: 100%; border-radius: 999px; }
         .분포수 { font-family: var(--mono); font-size: 0.86rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
-        .분포비율 { font-family: var(--mono); font-size: 0.76rem; color: var(--text-2); text-align: right; font-variant-numeric: tabular-nums; }
-        .위험배경-CRITICAL, .위험배경-HIGH { background: var(--red); }
+        .분포비율 { font-family: var(--mono); font-size: 0.74rem; color: var(--text-3); text-align: right; font-variant-numeric: tabular-nums; }
+        .위험배경-CRITICAL { background: var(--red); }
+        .위험배경-HIGH { background: var(--orange); }
         .위험배경-MEDIUM { background: var(--amber); }
-        .위험배경-LOW { background: #94a3b8; }
-        .위험글자-CRITICAL, .위험글자-HIGH { color: var(--red); }
-        .개관도움 { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 0.8rem; line-height: 1.65; color: var(--text-2); }
+        .위험배경-LOW { background: rgba(244,244,241,0.32); }
+        .위험글자-CRITICAL { color: var(--red); }
+        .위험글자-HIGH { color: var(--orange); }
+        .개관도움 { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 0.8rem; line-height: 1.7; color: var(--text-3); }
         .빈상태 { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px 20px; color: var(--text-2); text-align: center; min-height: 150px; }
         .빈상태아이콘 { font-size: 1.8rem; margin-bottom: 10px; color: var(--accent); opacity: 0.7; display: inline-flex; }
-        .빈상태제목 { font-size: 1rem; font-weight: 700; color: #64748b; margin-bottom: 8px; }
-        .빈상태설명 { font-size: 0.82rem; line-height: 1.7; }
-        .빈상태힌트 { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; text-align: left; width: 100%; max-width: 560px; }
+        .빈상태제목 { font-size: 1rem; font-weight: 700; color: var(--text-2); margin-bottom: 8px; }
+        .빈상태설명 { font-size: 0.82rem; line-height: 1.7; color: var(--text-3); }
+        .빈상태힌트 { margin-top: 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px 20px; text-align: left; width: 100%; max-width: 560px; }
         .힌트행 { display: flex; align-items: center; gap: 9px; font-size: 0.8rem; color: var(--text-2); line-height: 1.5; white-space: nowrap; }
-        .힌트번호 { width: 19px; height: 19px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 0.66rem; font-weight: 800; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .경고박스 { font-size: 0.82rem; line-height: 1.6; color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber-border); border-radius: var(--radius-sm); padding: 9px 12px; margin: 8px 0; }
-        .오류박스 { background: #fff1f2; border: 1px solid #fca5a5; border-radius: 12px; padding: 14px 16px; color: #dc2626; font-size: 0.85rem; line-height: 1.6; }
+        .힌트번호 { font-family: var(--mono); font-size: 0.66rem; color: var(--accent); flex-shrink: 0; }
+        .경고박스 { font-size: 0.82rem; line-height: 1.6; color: var(--amber); background: var(--amber-soft); border: 1px solid var(--amber-border); border-radius: var(--radius-sm); padding: 10px 14px; margin: 8px 0; }
+        .오류박스 { background: var(--red-soft); border: 1px solid var(--red-border); border-radius: var(--radius-sm); padding: 14px 16px; color: var(--red); font-size: 0.85rem; line-height: 1.6; }
+        .필터줄 { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+        .필터해제 { font-family: var(--mono); font-size: 0.68rem; color: var(--text-3); cursor: pointer; background: none; border: none; transition: color .2s; }
+        .필터해제:hover { color: var(--accent); }
+        .빈목록 { font-size: 0.8rem; color: var(--text-3); padding: 12px 4px; line-height: 1.6; }
+        .차트제목 { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.16em; color: var(--text-3); margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .맵주석 { font-family: var(--mono); font-size: 0.68rem; color: var(--text-3); margin-top: 10px; }
       `}</style>
 
+      <div className="대시배경" aria-hidden="true" />
       <header>
-        <div className="헤더왼쪽">
-          <span className="brand-mark"><Shield className="icon" /></span>
+        <Link href="/" className="헤더왼쪽">
+          <span className="brand-mark" />
           <div>
-            <div className="헤더제목"><span>허니팟</span> 공격 분석 시스템</div>
-            <div className="헤더부제">허니팟 수집 로그를 분류하고 한국어로 해설합니다</div>
+            <div className="헤더제목">정사평<span>.</span></div>
+            <div className="헤더부제">HONEYPOT THREAT CONSOLE · 수집 로그를 분류하고 한국어로 해설합니다</div>
           </div>
-        </div>
+        </Link>
         <div className="헤더우측">
           <div className="서버상태칩">
             <span className={`dot ${서버상태.연결됨 ? "dot-on" : "dot-off"}`} />
             {서버상태.연결됨
-              ? <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}><Activity className="icon" style={{ color: "var(--green)" }} /> AI 서버 · {서버상태.모델}</span>
+              ? <span>AI · {서버상태.모델}</span>
               : <span>서버 연결 안됨</span>}
           </div>
           {사용자 && (
@@ -984,20 +1036,20 @@ export default function DashboardPage() {
       {/* ── 24h 개요 통계 밴드 ── */}
       <section className="개요밴드">
         <button className={`스탯카드 ${필터 === "all" ? "활성" : ""}`} onClick={() => set필터("all")} title="전체 로그 보기">
-          <span className="스탯아이콘 이벤트"><Database className="icon" /></span>
-          <div><div className="스탯값">{개요.total_events.toLocaleString()}</div><div className="스탯라벨">총 이벤트 (24h)</div></div>
+          <span className="스탯머리"><span className="스탯아이콘 이벤트"><Database className="icon" /></span>| EVENTS · 24H</span>
+          <span className="스탯값">{개요.total_events.toLocaleString()}</span><span className="스탯라벨">총 이벤트 (24h)</span>
         </button>
         <button className={`스탯카드 ${필터 === "attacks" ? "활성" : ""}`} onClick={() => set필터("attacks")} title="분류된 공격만 보기">
-          <span className="스탯아이콘 공격"><ShieldAlert className="icon" /></span>
-          <div><div className="스탯값">{개요.total_attacks.toLocaleString()}</div><div className="스탯라벨">분류된 공격</div></div>
+          <span className="스탯머리"><span className="스탯아이콘 공격"><ShieldAlert className="icon" /></span>| CLASSIFIED</span>
+          <span className="스탯값">{개요.total_attacks.toLocaleString()}</span><span className="스탯라벨">분류된 공격</span>
         </button>
         <button className={`스탯카드 위험강조 ${개요.high_risk > 0 ? "주의" : ""} ${필터 === "highrisk" ? "활성" : ""}`} onClick={() => set필터("highrisk")} title="고위험(점수≥70) 보기">
-          <span className="스탯아이콘 고위험"><Flame className="icon" /></span>
-          <div><div className="스탯값">{개요.high_risk.toLocaleString()}</div><div className="스탯라벨">고위험 (점수 ≥ 70)</div></div>
+          <span className="스탯머리"><span className="스탯아이콘 고위험"><Flame className="icon" /></span>| HIGH RISK</span>
+          <span className="스탯값">{개요.high_risk.toLocaleString()}</span><span className="스탯라벨">고위험 (점수 ≥ 70)</span>
         </button>
         <button className={`스탯카드 ${필터 === "llm" ? "활성" : ""}`} onClick={() => set필터("llm")} title="LLM 분석된 로그 보기">
-          <span className="스탯아이콘 llm"><Sparkles className="icon" /></span>
-          <div><div className="스탯값">{개요.llm_analyzed.toLocaleString()}</div><div className="스탯라벨">LLM 분석 완료</div></div>
+          <span className="스탯머리"><span className="스탯아이콘 llm"><Sparkles className="icon" /></span>| LLM EXPLAINED</span>
+          <span className="스탯값">{개요.llm_analyzed.toLocaleString()}</span><span className="스탯라벨">LLM 분석 완료</span>
         </button>
       </section>
 
@@ -1006,19 +1058,19 @@ export default function DashboardPage() {
         <div className="왼쪽패널">
           <div className="카드">
             <div className="섹션헤더">
-              <div className="섹션번호">1</div>
+              <div className="섹션번호">01</div>
               <span className="섹션제목">최근 공격 로그</span>
               <span className="섹션설명" style={{ cursor: "pointer" }} onClick={공격목록새로고침} title="새로고침"><RefreshCw className="icon" /> {표시목록.length}건</span>
             </div>
             {필터 !== "all" && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+              <div className="필터줄">
                 <span className="badge badge-indigo">필터: {필터라벨[필터]}</span>
-                <span style={{ fontSize: "0.74rem", color: "var(--accent)", cursor: "pointer", fontWeight: 600 }} onClick={() => set필터("all")}>전체 해제</span>
+                <button type="button" className="필터해제" onClick={() => set필터("all")}>× 전체 해제</button>
               </div>
             )}
             <div className="공격목록">
               {표시목록.length === 0 && (
-                <div style={{ fontSize: "0.8rem", color: "var(--text-3)", padding: "12px 4px", lineHeight: 1.6 }}>
+                <div className="빈목록">
                   {목록오류
                     ? `로그를 불러오지 못했습니다 (${목록오류})`
                     : "표시할 로그가 없습니다. (필터를 바꾸거나 T-Pot ES 데이터를 확인하세요)"}
@@ -1028,7 +1080,7 @@ export default function DashboardPage() {
                 <button key={a.사건ID} className={`시나리오버튼 위험띠-${a.위험등급} ${선택공격?.사건ID === a.사건ID ? "선택됨" : ""}`} onClick={() => 공격선택(a)}>
                   <div className="시나리오헤더행">
                     <span className="시나리오아이콘">
-                      <AlertTriangle className="icon" style={{ color: a.위험등급 === "MEDIUM" ? "var(--amber)" : a.위험등급 === "LOW" ? "var(--text-3)" : "var(--red)" }} />
+                      <AlertTriangle className="icon" style={{ color: a.위험등급 === "MEDIUM" ? "var(--amber)" : a.위험등급 === "LOW" ? "var(--text-3)" : a.위험등급 === "HIGH" ? "var(--orange)" : "var(--red)" }} />
                     </span>
                     <span className="시나리오이름">{공격표시명(a)}</span>
                     <span className={`위험배지 ${위험배지클래스[a.위험등급] ?? "보통"}`}>{a.위험등급}</span>
@@ -1091,7 +1143,7 @@ export default function DashboardPage() {
           {선택공격 && (
             <div className="카드">
               <div className="단계카드헤더">
-                <span className="단계번호">1</span>
+                <span className="단계번호">ML</span>
                 <span className="단계제목">학습 ML 1차 다중분류</span>
                 <span className="단계부제">ml-classifier · {선택공격.공격자IP}</span>
               </div>
@@ -1113,10 +1165,10 @@ export default function DashboardPage() {
               </div>
               <svg ref={네트워크SVGRef} id="네트워크SVG" />
               <div className="그래프범례">
-                <div className="범례항목"><div className="범례점" style={{ background: "#fee2e2", border: "2px solid #ef4444" }} />공격자 IP</div>
-                <div className="범례항목"><div className="범례점" style={{ background: "#eef2ff", border: "2px solid #6366f1" }} />허니팟</div>
-                <div className="범례항목"><div className="범례점" style={{ background: "#f8fafc", border: "2px solid #cbd5e1" }} />공격 행위 단계</div>
-                <div style={{ marginLeft: "auto", fontSize: "0.72rem", color: "#94a3b8" }}>→ 빨간 점: 실시간 공격 흐름</div>
+                <div className="범례항목"><div className="범례점" style={{ background: "rgba(255,77,109,0.14)", border: "2px solid var(--red)" }} />공격자 IP</div>
+                <div className="범례항목"><div className="범례점" style={{ background: "rgba(201,242,74,0.12)", border: "2px solid var(--accent)" }} />허니팟</div>
+                <div className="범례항목"><div className="범례점" style={{ background: "var(--surface-2)", border: "2px solid rgba(244,244,241,0.28)" }} />공격 행위 단계</div>
+                <div className="범례꼬리">→ 라임 점: 공격 흐름</div>
               </div>
             </div>
           )}
@@ -1124,7 +1176,7 @@ export default function DashboardPage() {
           {showSteps && (
             <div className="카드">
               <div className="단계카드헤더">
-                <span className="단계번호">2</span>
+                <span className="단계번호">LLM</span>
                 <span className="단계제목">LLM 2차 분석</span>
                 <span className="단계부제" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}><Clock className="icon" /> 진행 단계</span>
               </div>
@@ -1140,8 +1192,8 @@ export default function DashboardPage() {
             <div className="카드" style={{ padding: 0, overflow: "hidden" }}>
               <div className="스트리밍헤더">
                 <div className="스트리밍헤더왼쪽">
-                  <Radio className="icon" style={{ color: "#22c55e", animation: "pulse 1.5s infinite" }} />
-                  <span className="스트리밍제목">AI 실시간 추론 중...</span>
+                  <span className="스트리밍점" />
+                  <span className="스트리밍제목">LLM STREAM · 실시간 추론</span>
                 </div>
                 <span className="스트리밍배지">LIVE</span>
               </div>
@@ -1159,16 +1211,16 @@ export default function DashboardPage() {
           {차트HTML === "__RENDER_CHARTS__" && (
             <div className="카드" style={{ marginBottom: 0 }}>
               <div className="결과카드헤더" style={{ marginBottom: 12 }}>
-                <span className="결과카드제목" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}><BarChart3 className="icon" style={{ color: "var(--accent)" }} /> 위협 분석 차트</span>
+                <span className="결과카드제목" style={{ display: "inline-flex", alignItems: "center", gap: 10 }}><BarChart3 className="icon" style={{ color: "var(--accent)" }} /> 위협 분석 차트</span>
                 <span className="결과카드부제">AI 분석 지표 시각화</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, alignItems: "start" }}>
                 <div>
-                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-2)", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Crosshair className="icon" /> 위협 레이더</div>
+                  <div className="차트제목"><Crosshair className="icon" /> 위협 레이더</div>
                   <svg ref={레이더SVGRef} viewBox="0 0 280 260" style={{ width: "100%", display: "block" }} />
                 </div>
                 <div>
-                  <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--text-2)", marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><TrendingUp className="icon" /> 분석 지표</div>
+                  <div className="차트제목"><TrendingUp className="icon" /> 분석 지표</div>
                   <svg ref={바차트SVGRef} viewBox="0 0 280 230" style={{ width: "100%", display: "block" }} />
                 </div>
               </div>
@@ -1181,7 +1233,7 @@ export default function DashboardPage() {
                유효한 질문이므로, 목록에서 바로 계산한 분포로 채운다. */
             <div className="카드 개관">
               <div className="섹션헤더">
-                <div className="섹션번호">2</div>
+                <div className="섹션번호">02</div>
                 <span className="섹션제목">지금 들어오는 공격</span>
                 <span className="섹션설명">최근 {표시목록.length}건 기준</span>
               </div>
@@ -1416,7 +1468,7 @@ export default function DashboardPage() {
           {맵펼침 && (
             <>
               <iframe src="/tpot-map/" title="T-Pot Attack Map" className="맵아이프레임" />
-              <div style={{ fontSize: "0.72rem", color: "var(--text-3)", marginTop: 8 }}>
+              <div className="맵주석">
                 ※ 공격 아크는 실시간 이벤트가 들어올 때 그려집니다. 조용하면 지도만 표시됩니다.
               </div>
             </>

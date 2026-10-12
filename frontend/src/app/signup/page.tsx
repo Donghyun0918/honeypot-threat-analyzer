@@ -5,8 +5,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import Radar from "@/components/intro/Radar";
 import {
-  Shield, User, Lock, Eye, EyeOff, Mail, Building2, ArrowLeft, ArrowRight,
+  User, Lock, Eye, EyeOff, Mail, Building2, ArrowLeft, ArrowRight,
   AlertTriangle, CheckCircle2, Sparkles, ShieldCheck, Zap,
 } from "lucide-react";
 
@@ -35,11 +36,11 @@ function calcStep(name: string, email: string, username: string, pw: string, pwc
 }
 
 const PW_LEVELS = [
-  { label: "매우 약함", color: "#ef4444", width: "20%" },
-  { label: "약함", color: "#f97316", width: "40%" },
-  { label: "보통", color: "#eab308", width: "60%" },
-  { label: "강함", color: "#22c55e", width: "80%" },
-  { label: "매우 강함", color: "#06b6d4", width: "100%" },
+  { label: "매우 약함", color: "#ff4d6d", width: "20%" },
+  { label: "약함", color: "#ff8a5c", width: "40%" },
+  { label: "보통", color: "#ffc861", width: "60%" },
+  { label: "강함", color: "#c9f24a", width: "80%" },
+  { label: "매우 강함", color: "#66e8ff", width: "100%" },
 ];
 
 const BENEFITS = [
@@ -112,21 +113,18 @@ export default function SignupPage() {
       <aside className="auth-brand">
         <div className="auth-brand-in">
           <div className="brand">
-            <span className="brand-mark"><Shield className="icon" /></span>
-            <span className="brand-name">정사<span>평</span></span>
+            <span className="brand-mark" />
+            <span className="brand-name">정사평<span>.</span></span>
           </div>
           <div className="hp-visual">
-            <div className="hp-ring-box">
-              <div className="hp-ring" /><div className="hp-ring" /><div className="hp-ring" />
-              <div className="hp-core"><Shield className="icon" /></div>
-            </div>
+            <Radar />
           </div>
           <div>
-            <div className="brand-headline">허니팟 분석<br /><span>대시보드 계정</span></div>
+            <div className="brand-headline"><span className="외곽">허니팟 분석</span><br /><span>대시보드 계정</span></div>
             <p className="brand-desc">계정을 만들면 수집된 공격 로그의 분류 결과와 한국어 해설을 볼 수 있습니다.</p>
             <div className="hl-list">
-              {BENEFITS.map((b) => (
-                <div key={b.text} className="hl-item"><span className="hl-ic"><b.icon className="icon" /></span>{b.text}</div>
+              {BENEFITS.map((b, i) => (
+                <div key={b.text} className="hl-item"><span className="hl-no">{String(i + 1).padStart(3, "0")}</span><span className="hl-ic"><b.icon className="icon" /></span>{b.text}</div>
               ))}
             </div>
           </div>
@@ -137,7 +135,8 @@ export default function SignupPage() {
       <main className="auth-form">
         <div className="auth-card">
           <Link href="/" className="back-link"><ArrowLeft className="icon" /> 홈으로 돌아가기</Link>
-          <h1 className="auth-title">계정 만들기</h1>
+          <div className="auth-kicker">002 · SIGN UP</div>
+          <h1 className="auth-title">계정 만들기<span style={{ color: "var(--accent)" }}>.</span></h1>
           <p className="auth-sub">이미 계정이 있으신가요? <Link href="/login">로그인</Link></p>
 
           {/* steps */}

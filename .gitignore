@@ -36,6 +36,11 @@ tpotce/.env
 .env
 .env.local
 *.env
+# .env 백업본. `*.env` 는 `.env` 만 잡고 `.env.bak-20260914-190546` 같은 이름은
+# 안 잡혀서 git status 에 올라온다. 그 파일에 JWT_SECRET 이 들어 있어 실수로
+# 커밋될 수 있다.
+.env.*
+!.env.example
 !*.env.example
 
 # === 모델 바이너리 ===
@@ -48,18 +53,3 @@ tpotce/.env
 .idea/
 .vscode/
 *.log
-
-# ── 데이터 (2026-09-22) ────────────────────────────────────────────────────
-# 원본 공격 로그와 학습 데이터셋은 저장소에 두지 않는다 — 실제 공격자 IP,
-# 자격증명 시도, SSH 세션 기록이 들어 있는 제3자 데이터다.
-# 학습된 모델(models/*.pkl, encoders.json)은 파생 산출물이라 포함한다.
-logs/
-logs-staged/
-tpotce/data/ml-classifier/dataset/
-tpotce/data/ml-classifier/work-real/
-tpotce/data/ml-classifier/cursor.json
-tpotce/data/ml-classifier/heartbeat
-
-# 백업(계정 해시 포함) · 세션 설정
-backups/
-.claude/
