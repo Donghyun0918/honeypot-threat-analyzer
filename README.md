@@ -2,7 +2,7 @@
 
 정사평 · 캡스톤 디자인 졸업작품
 
-허니팟이 수집한 영문 보안 로그를 **규칙 기반 분류 → 한국어 LLM 해설 → 대시보드**로
+허니팟이 수집한 영문 보안 로그를 **규칙 + ML 교차검증 분류 → 한국어 LLM 해설 → 대시보드**로
 자동 변환하는 파이프라인입니다. T-Pot 본체는 수정하지 않고 사이드카로 얹습니다.
 
 공격자를 유인해 기록하는 것까지는 오픈소스가 해줍니다. 남는 것은 **해석**입니다.
@@ -84,7 +84,7 @@ LLM 모델 다운로드 → 시연 데이터 주입까지 합니다. 여러 번 
 
 ```
 허니팟 로그 ─► logstash-*  ─►  ml-classifier  ─►  ml-analysis-*
-                              (규칙 기반 분류)         │
+                              (규칙 + ML 교차검증)     │
                                                        │ mitre_score ≥ 70 만
                                                        ▼
                               llm-analyzer  ─────►  llm-analysis-*
@@ -105,6 +105,10 @@ LLM 모델 다운로드 → 시연 데이터 주입까지 합니다. 여러 번 
 | `dev-llm-analyzer` | 60초 주기 한국어 해설 |
 | `dev-ollama` | 로컬 LLM 추론 |
 | `dev-map_web` / `map_data` / `map_redis` | 실시간 공격 지도 |
+
+LLM 은 기본으로 로컬 Ollama 를 씁니다. `.env` 의 `LLM_PROVIDER` 를 `anthropic`(Claude API)·`openai`·`gemini`
+중 하나로 바꾸고 해당 API 키(`ANTHROPIC_API_KEY` 등)를 넣으면 외부 API 로 전환됩니다.
+외부 API 를 쓰면 해설 대상 공격 로그가 그 서비스로 전송되니 유의하세요.
 
 ---
 
