@@ -2,16 +2,45 @@
 
 정사평 · 캡스톤 디자인 졸업작품
 
-허니팟이 수집한 영문 보안 로그를 **규칙 기반 분류 → 한국어 LLM 해설 → 대시보드**로
+허니팟이 수집한 영문 보안 로그를 **규칙 + ML 교차검증 분류 → 한국어 LLM 해설 → 대시보드**로
 자동 변환하는 파이프라인입니다. T-Pot 본체는 수정하지 않고 사이드카로 얹습니다.
+
+공격자를 유인해 기록하는 것까지는 오픈소스가 해줍니다. 남는 것은 **해석**입니다.
+T-Pot 은 허니팟 25종의 로그를 쌓아주지만 남는 건 `cowrie.login.failed` 같은 영문
+원시 이벤트뿐이고, 이걸 "무슨 일이 있었고 뭘 해야 하나"로 옮기려면 허니팟별
+스키마와 MITRE ATT&CK 를 이미 알아야 합니다. 대부분의 조직에는 그 사람이 없습니다.
+
+### 실측 — 시연 데이터가 아니라 실제 공격
+
+AWS 에 올린 T-Pot 이 10일간(2026-04-27 ~ 05-06) 받은 로그 전량을 색인해
+파이프라인을 처음부터 끝까지 완주시킨 결과입니다.
+
+| 지표 | 값 | |
+|---|---:|---|
+| 수집 이벤트 | **1,026,903** | 수집 지점 18종 |
+| 고유 공격 IP | **24,346** | 미국 · 브라질 · 영국 순 |
+| 고위험 선별 | **45,075** | 전체의 4.4% |
+| 규칙·모델 합의율 | **99.9%** | 불일치 782건은 검토 대상 |
+
+측정해서 알게 된 것 네 가지가 이 프로젝트 결과물의 절반입니다.
+
+- **위험도는 LLM 에게 맡길 일이 아니었다** — 3B 가 고위험 10건을 10건 다 낮게
+  매겼고 7.8B 도 2/10 에 그쳤습니다. 점수에서 계산하도록 회수했습니다.
+- **같은 이야기를 4만 번 쓰고 있었다** — 고위험 45,075건이 실은 **74개 패턴**이고
+  상위 2개가 89.8% 를 덮습니다. 패턴당 한 번만 해설해 호출을 99.84% 줄였습니다
+  (31.8일 → 75분).
+- **모델 성능이 아니라 측정이 틀렸다** — 평가셋을 학습과 다른 인코더로 만들어
+  20만 행 중 6만 행이 엉뚱한 코드로 들어갔습니다 (92.5% → 실제 99.9%).
+- **게이트는 최적화가 아니라 성립 조건이다** — 위협점수 70 이상만 통과시키는
+  필터가 95.6% 를 막습니다. 없으면 100만 건이 전부 추론으로 들어가 725일입니다.
 
 ---
 
 ## 빠른 시작
 
 ```bash
-git clone <저장소>
-cd T-POT_PR/capstone-dev
+git clone https://github.com/Donghyun0918/honeypot-threat-analyzer.git
+cd honeypot-threat-analyzer
 ./setup.sh
 ```
 
@@ -55,7 +84,7 @@ LLM 모델 다운로드 → 시연 데이터 주입까지 합니다. 여러 번 
 
 ```
 허니팟 로그 ─► logstash-*  ─►  ml-classifier  ─►  ml-analysis-*
-                              (규칙 기반 분류)         │
+                              (규칙 + ML 교차검증)     │
                                                        │ mitre_score ≥ 70 만
                                                        ▼
                               llm-analyzer  ─────►  llm-analysis-*
@@ -77,6 +106,10 @@ LLM 모델 다운로드 → 시연 데이터 주입까지 합니다. 여러 번 
 | `dev-ollama` | 로컬 LLM 추론 |
 | `dev-map_web` / `map_data` / `map_redis` | 실시간 공격 지도 |
 
+LLM 은 기본으로 로컬 Ollama 를 씁니다. `.env` 의 `LLM_PROVIDER` 를 `anthropic`(Claude API)·`openai`·`gemini`
+중 하나로 바꾸고 해당 API 키(`ANTHROPIC_API_KEY` 등)를 넣으면 외부 API 로 전환됩니다.
+외부 API 를 쓰면 해설 대상 공격 로그가 그 서비스로 전송되니 유의하세요.
+
 ---
 
 ## 자주 겪는 문제
@@ -86,7 +119,7 @@ LLM 모델 다운로드 → 시연 데이터 주입까지 합니다. 여러 번 
 
 *데이터가 없다* — 시연 데이터를 다시 넣으세요:
 ```bash
-python3 ../integration-tests/inject_sample_docs.py --host http://127.0.0.1:19300 --count 80
+python3 ./integration-tests/inject_sample_docs.py --host http://127.0.0.1:19300 --count 80
 ```
 
 *데이터는 있는데 오래됐다* — **보관된 로그를 적재했다면 데이터가 몇 달 전이라
@@ -103,7 +136,7 @@ THREAT_CONSOLE_WINDOW_LONG=now-1y
 지도는 **실시간으로 들어오는** 이벤트만 그립니다(최근 약 10초 창).
 한 번 주입한 데이터로는 아크가 생기지 않습니다. 별도 터미널에서:
 ```bash
-python3 ../integration-tests/demo_feed.py --host http://127.0.0.1:19300
+python3 ./integration-tests/demo_feed.py --host http://127.0.0.1:19300
 ```
 Ctrl-C 로 멈춥니다. 시연 영상을 찍을 때도 이걸 켜두세요.
 
@@ -125,8 +158,9 @@ curl -X POST http://localhost:8091/api/users/signup -H 'Content-Type: applicatio
 `./setup.sh` 가 채워주지만, 직접 만들려면 `openssl rand -base64 48`.
 
 **포트가 이미 쓰이고 있다고 합니다**
-다른 스택(`../capstone`)이 떠 있을 수 있습니다. `cd ../capstone && docker compose down`.
-메모리가 8GB 이하면 **두 스택을 동시에 띄울 수 없습니다.**
+다른 Docker 스택이 8002·8091·19300·5434 를 쓰고 있는지 확인하세요.
+T-Pot 본체를 같은 장비에서 돌리는 중이라면 메모리도 함께 보세요 —
+8GB 이하에서는 두 스택을 동시에 띄울 수 없습니다.
 
 **메모리가 부족해 보입니다**
 `docker stats` 로 확인하세요. Ollama 가 모델을 상주시켜 2~3GB 를 씁니다.
@@ -201,20 +235,62 @@ Malware(414)·Intrusion(194) 이라 한 것을 모델이 Recon 으로 낮춰 봅
 ## 디렉토리
 
 ```
-capstone-dev/
+.
 ├── setup.sh                    ← 이걸 실행하세요
+├── backup.sh                   Postgres 백업/복원
 ├── .env.example                설정 템플릿
 ├── docker-compose.yml          컨테이너 10개
-├── backend/honeypot/           Spring Boot
-├── frontend/                   Next.js
+├── backend/honeypot/           Spring Boot — JWT 인증 · ES 조회 API
+├── frontend/                   Next.js 15 — 한국어 대시보드 · 어택맵
+├── integration-tests/          시연 데이터 주입 · 통합 확인
+├── promo-site/                 프로젝트 소개 정적 사이트
+├── docs/                       보고서 · 폼보드 · 데이터셋 분석
 └── tpotce/
     ├── docker/
     │   ├── ml-classifier/      분류 사이드카 + 학습 파이프라인
     │   ├── llm-analyzer/       한국어 해설 사이드카
-    │   ├── threat-console/     순정 T-Pot 용 Flask 콘솔
     │   └── map-override/       어택맵 타일 패치
-    ├── compose/                T-Pot 프로파일
-    └── data/                   학습 데이터 (저장소에 없음, 재생성 가능)
+    └── data/ml-classifier/models/   학습된 모델(v5)
 ```
 
-`../capstone/` 은 개선 전 원본입니다. 비교·복구용으로만 두고 개발은 여기서 합니다.
+`tpotce/` 아래에는 **이 프로젝트가 만든 사이드카만** 들어 있습니다.
+T-Pot 본체는 수정하지 않으므로 싣지 않습니다 — 업스트림
+([telekom-security/tpotce](https://github.com/telekom-security/tpotce))를
+그대로 쓰면 됩니다.
+
+---
+
+## 저장소에 없는 것
+
+**실제 공격 로그와 학습 데이터셋은 포함하지 않았습니다.**
+
+| 빠진 것 | 크기 | 이유 |
+|---|---|---|
+| 원본 허니팟 로그 | 약 1.3GB | 실제 공격자 IP·자격증명 시도·SSH 세션 기록이 들어 있는 제3자 데이터입니다 |
+| 학습 데이터셋 | 약 2.0GB | 위 로그에서 만드는 중간 산출물이라 재생성할 수 있습니다 |
+| `.env` | — | JWT 서명 키 등. `setup.sh` 가 `.env.example` 에서 만들어 줍니다 |
+
+**학습된 모델은 포함되어 있습니다**(`tpotce/data/ml-classifier/models/`, 2.8MB).
+원시 로그가 아니라 파생 산출물이고, 없으면 교차검증 칸이 비기 때문입니다.
+모델 없이도 분류 자체는 규칙으로 그대로 동작합니다.
+
+데이터 없이도 `./setup.sh` 만으로 스택이 뜨고, 시연 데이터가 자동 주입되어
+화면이 채워집니다.
+
+---
+
+## 팀
+
+**정사평** — 이현(팀장) · 김동현 · 홍영재 · 이재민
+2026년 4월 ~ 9월 · 캡스톤 디자인 졸업작품
+
+| 문서 | 내용 |
+|---|---|
+| [`docs/졸업작품보고서.pdf`](docs/졸업작품보고서.pdf) | 설계 근거와 실측 전체 |
+| [`docs/폼보드.png`](docs/폼보드.png) | 한 장 요약 (A0) |
+| [`docs/작업기록.md`](docs/작업기록.md) | **개발 중 실제로 쓴 작업 로그** — 무엇을 왜 그렇게 했고 무엇이 왜 틀렸는지 |
+| [`docs/DATASET_FINDINGS.md`](docs/DATASET_FINDINGS.md) | 학습 데이터 진단 |
+
+작업 로그가 가장 솔직한 자료입니다. 성능이 92.5%로 잘못 측정된 경위(§4),
+같은 해설을 4만 번 쓰고 있던 것을 74개 패턴으로 접은 과정(§20), 백엔드 테스트가
+한 번도 돌지 않았는데 `BUILD SUCCESSFUL` 이던 것(§31) 같은 것들이 그대로 있습니다.
