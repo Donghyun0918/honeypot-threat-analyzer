@@ -106,7 +106,7 @@ class AnthropicProvider(Provider):
     def __init__(self) -> None:
         self.base = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com").rstrip("/")
         self.key = os.getenv("ANTHROPIC_API_KEY", "")
-        self.model = os.getenv("LLM_MODEL", "claude-3-5-haiku-latest")
+        self.model = os.getenv("LLM_MODEL", "claude-haiku-5-5")
 
     def complete(self, prompt: str) -> str:
         data = _post_json(
@@ -114,7 +114,7 @@ class AnthropicProvider(Provider):
             {
                 "model": self.model,
                 "max_tokens": 1500,
-                "temperature": 0.2,
+                # Claude 5 계열은 temperature 를 받지 않는다(400) — 보내지 않는다.
                 "messages": [{"role": "user", "content": prompt}],
             },
             {"x-api-key": self.key, "anthropic-version": "2023-06-01"},

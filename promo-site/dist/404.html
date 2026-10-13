@@ -438,7 +438,7 @@
         <span class="n">③ 해설</span>
         <span class="t">llm-analyzer</span>
         <p>70점 이상 고위험만 한국어 요약과 대응 방안을 만든다. 같은 공격 패턴은 한 번만.</p>
-        <span class="m">EXAONE 3.5 · 로컬 추론</span>
+        <span class="m">Claude Haiku 5.5 · API</span>
       </div>
       <div class="step">
         <span class="n">④ 제시</span>
@@ -452,7 +452,7 @@
       <span class="tag"><b>Elasticsearch</b> 저장·집계</span>
       <span class="tag"><b>LightGBM</b> 교차검증</span>
       <span class="tag"><b>MITRE ATT&CK</b> 위협 점수</span>
-      <span class="tag"><b>Ollama</b> 로컬 LLM</span>
+      <span class="tag"><b>Claude</b> 한국어 해설</span>
       <span class="tag"><b>Spring Boot</b> 인증·권한</span>
       <span class="tag"><b>Next.js 15</b> 한국어 UI</span>
       <span class="tag"><b>Docker Compose</b> 10 컨테이너</span>
@@ -500,7 +500,7 @@
       <div class="find">
         <h3>위험도는 LLM 에게 맡길 일이 아니었다</h3>
         <p>3B 모델이 고위험 10건을 10건 다 낮게 매겼다. 프롬프트를 고쳐도 같았고
-          같은 계열 7B 로 올려도 2/10 에 그쳤다. EXAONE 7.8B 는 10/10 이었지만 모델에 따라
+          같은 계열 7B 로 올려도 2/10 에 그쳤다. EXAONE 7.8B 와 Claude 는 10/10 이었지만 모델에 따라
           이만큼 갈리는 판정이라 점수에서 계산하도록 회수했다.</p>
         <span class="fig">10/10 실패 → 점수 파생</span>
       </div>
@@ -508,7 +508,7 @@
         <h3>같은 이야기를 4만 번 쓰고 있었다</h3>
         <p>고위험 45,075건이 실제로는 74개 공격 패턴이고, 상위 2개(둘 다 포트 445)가
           89.8% 를 덮는다. 패턴당 한 번만 해설하도록 고쳤다.</p>
-        <span class="fig">31.8일 → 75분</span>
+        <span class="fig">31.8일 → 5분</span>
       </div>
       <div class="find">
         <h3>모델 성능이 아니라 측정이 틀렸다</h3>

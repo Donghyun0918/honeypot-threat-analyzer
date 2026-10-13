@@ -256,7 +256,7 @@ export class Anthropic제공자 implements LLM제공자 {
       ""
     );
     this.key = opts?.key ?? env("ANTHROPIC_API_KEY");
-    this.모델 = opts?.모델 ?? env("LLM_MODEL", "claude-3-5-haiku-latest");
+    this.모델 = opts?.모델 ?? env("LLM_MODEL", "claude-haiku-5-5");
   }
 
   private get 헤더() {
@@ -271,7 +271,7 @@ export class Anthropic제공자 implements LLM제공자 {
     return {
       model: this.모델,
       max_tokens: 1024,
-      temperature: 0.1,
+      // Claude 5 계열은 temperature 를 받지 않는다(400)
       system: JSON지시,
       messages: [{ role: "user", content: 프롬프트 }],
       stream,
