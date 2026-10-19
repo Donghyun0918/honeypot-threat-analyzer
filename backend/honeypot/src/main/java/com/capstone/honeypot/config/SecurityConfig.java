@@ -51,6 +51,7 @@ public class SecurityConfig {
                                 "/api/llm-recent",
                                 "/api/llm-patterns",
                                 "/api/llm-explain",
+                                "/api/event-source",
                                 "/api/exposure",
                                 // 내 자산 목록. 본인 것만 다루지만, 애초에
                                 // 로그인하지 않은 사람이 닿을 이유가 없다.

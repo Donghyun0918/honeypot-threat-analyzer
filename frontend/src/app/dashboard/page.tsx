@@ -98,7 +98,9 @@ function 숙련도카드(r: Record<string, unknown>): string {
   const 배지cls: Record<string, string> = { "Script Kiddie": "초보", "Intermediate": "중급", "Advanced": "고급" };
   const 등급 = String(r.등급 || "");
   const 근거 = ((r.근거목록 as string[]) || []).map((g) => `<li>${g}</li>`).join("");
-  return `<div class="분석칩카드"><div class="분석칩섹션제목">공격자 숙련도 평가</div><span class="큰배지 ${배지cls[등급] || ""}">${표시[등급] || 등급}</span><ul class="포인트목록" style="margin:8px 0">${근거}</ul><p class="근거설명">${r.종합설명 || ""}</p></div>`;
+  // 원본 근거가 없으면 모델이 "판단 불가" 를 고를 수 있다(lib/prompts.ts). 세 등급 밖의
+  // 값은 전부 판단 보류로 보여준다 — 스타일 없는 배지에 모델 문구가 그대로 찍히지 않게.
+  return `<div class="분석칩카드"><div class="분석칩섹션제목">공격자 숙련도 평가</div><span class="큰배지 ${배지cls[등급] || "불명"}">${표시[등급] || "판단 보류"}</span><ul class="포인트목록" style="margin:8px 0">${근거}</ul><p class="근거설명">${r.종합설명 || ""}</p></div>`;
 }
 function 대응권고카드(r: Record<string, unknown>): string {
   const 즉각 = ((r.즉각조치 as string[]) || []).map((a) => `<li>${a}</li>`).join("");
@@ -466,10 +468,30 @@ export default function DashboardPage() {
     ]);
 
     try {
+      // 원본 로그의 근거(IDS 서명·실행 명령·페이로드)를 붙인다. 분류 결과만 보내면
+      // 모델이 화면용 자리값("페이로드 없음", "요청 1회")을 근거로 판단한다.
+      const 분석입력: 공격로그입력 = { ...선택공격, 원본확보: false };
+      const 문서id = (선택공격 as unknown as { _doc_id?: string })._doc_id;
+      if (문서id) {
+        const 원본 = await 인증fetch(`/api/event-source?id=${encodeURIComponent(문서id)}`)
+          .then((r) => r.json())
+          .catch(() => null) as { found?: boolean; signature?: string; category?: string; commands?: string[]; payload?: string; url?: string; method?: string; user_agent?: string } | null;
+        if (원본?.found) {
+          분석입력.원본확보 = true;
+          분석입력.탐지서명 = 원본.signature ?? undefined;
+          분석입력.탐지분류 = 원본.category ?? undefined;
+          분석입력.실행명령 = 원본.commands ?? undefined;
+          분석입력.페이로드 = 원본.payload ?? undefined;
+          if (원본.url) 분석입력.대상URI = 원본.url;
+          분석입력.HTTP메서드 = 원본.method ?? undefined;
+          분석입력.사용자에이전트 = 원본.user_agent ?? undefined;
+        }
+      }
+
       const res = await 인증fetch("/api/analyze/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 분석유형: "전체리포트", 로그: 선택공격 }),
+        body: JSON.stringify({ 분석유형: "전체리포트", 로그: 분석입력 }),
       });
 
       // 관문(인증·쿼터·동시 실행)이 막으면 본문은 스트림이 아니라 JSON 이다.

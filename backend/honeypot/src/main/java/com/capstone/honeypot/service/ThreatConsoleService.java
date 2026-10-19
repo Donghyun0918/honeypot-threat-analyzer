@@ -149,6 +149,85 @@ public class ThreatConsoleService {
         }
     }
 
+    // ── 사건 원본(logstash-*)의 판단 근거 필드 ───────────────────────────
+    /**
+     * "더 깊게 분석" 이 모델에 실어 보낼 원본 근거를 꺼낸다.
+     *
+     * <p>ml-analysis-* 에는 분류 결과만 있다 — 어떤 IDS 서명이 울렸는지, 공격자가
+     * 무슨 명령을 쳤는지는 없다. 그것 없이 모델에 물으면 "페이로드 없음 → 초보"
+     * 처럼 <b>빈 값을 근거로</b> 판단한다(10-19 실사건 캡처에서 DoublePulsar 를
+     * 정보수집·초보로 해석). 그래서 같은 문서 id 로 원본을 찾아 근거만 추려 준다.
+     *
+     * <p>원본을 통째로 넘기지 않는다: 화이트리스트 필드만, 페이로드는 잘라서.
+     * 원본 인덱스 보존 기간이 지나 못 찾으면 {@code found=false} — 화면은 그
+     * 사실을 모델에 알린다.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> eventSource(String sourceDocId) {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("found", false);
+        if (sourceDocId == null || sourceDocId.isBlank()) return out;
+        try {
+            SearchResponse<Map> r = es.search(s -> s
+                    .index("logstash-*")
+                    .size(1)
+                    .ignoreUnavailable(true)
+                    .query(q -> q.ids(i -> i.values(sourceDocId)))
+                    .source(src -> src.filter(f -> f.includes(List.of(
+                            "type", "proto", "app_proto", "alert.signature", "alert.category",
+                            "eventid", "input", "session", "payload_printable",
+                            "http.url", "http.http_method", "http.http_user_agent")))),
+                    Map.class);
+            var hits = r.hits().hits();
+            if (hits.isEmpty() || hits.get(0).source() == null) return out;
+            Map<String, Object> d = (Map<String, Object>) hits.get(0).source();
+
+            out.put("found", true);
+            out.put("honeypot", d.get("type"));
+            out.put("protocol", d.get("app_proto") != null ? d.get("app_proto") : d.get("proto"));
+            if (d.get("alert") instanceof Map<?, ?> a) {
+                out.put("signature", a.get("signature"));
+                out.put("category", a.get("category"));
+            }
+            if (d.get("http") instanceof Map<?, ?> h) {
+                out.put("url", h.get("url"));
+                out.put("method", h.get("http_method"));
+                out.put("user_agent", h.get("http_user_agent"));
+            }
+            out.put("eventid", d.get("eventid"));
+            if (d.get("payload_printable") instanceof String p && !p.isBlank()) {
+                out.put("payload", p.length() > 300 ? p.substring(0, 300) : p);
+            }
+
+            // Cowrie 는 명령 한 줄이 문서 하나다. 세션의 명령을 모아야 행위가 보인다.
+            List<String> 명령 = new ArrayList<>();
+            if (d.get("session") instanceof String sess && !sess.isBlank()) {
+                SearchResponse<Map> c = es.search(s -> s
+                        .index("logstash-*")
+                        .size(15)
+                        .ignoreUnavailable(true)
+                        .sort(so -> so.field(f -> f.field("@timestamp").order(SortOrder.Asc)))
+                        .query(q -> q.bool(b -> b
+                                .filter(f -> f.match(m -> m.field("session").query(sess)))
+                                .filter(f -> f.match(m -> m.field("eventid").query("cowrie.command.input")))))
+                        .source(src -> src.filter(f -> f.includes(List.of("input")))),
+                        Map.class);
+                c.hits().hits().forEach(h -> {
+                    if (h.source() != null && h.source().get("input") instanceof String in && !in.isBlank()) {
+                        명령.add(in.length() > 200 ? in.substring(0, 200) : in);
+                    }
+                });
+            } else if (d.get("input") instanceof String in && !in.isBlank()) {
+                명령.add(in);
+            }
+            if (!명령.isEmpty()) out.put("commands", 명령);
+            return out;
+        } catch (Exception e) {
+            log.warn("eventSource failed: {}", e.toString());
+            return out;
+        }
+    }
+
     // ── 자산 노출 대조 ───────────────────────────────────────────────────
     /**
      * 내가 가진 포트들이 <b>실제로 얼마나 얻어맞고 있는지</b> 돌려준다.
@@ -420,7 +499,10 @@ public class ThreatConsoleService {
 
     public List<Map<String, Object>> exportLlm(String since) {
         return rawExport("llm-analysis-*", since, 5000, List.of(
-                "@timestamp", "src_ip", "honeypot", "ml_label",
+                // source_doc_id·dest_port·mitre_technique 가 빠져 있어서 "LLM 분석" 목록에서
+                // 고른 사건은 저장된 해설을 못 찾고 MITRE 칸이 비었다(10-19).
+                "@timestamp", "source_doc_id", "src_ip", "dest_port", "honeypot", "ml_label",
+                "mitre_technique",
                 "mitre_score", "risk_score", "severity",
                 "summary_ko", "solution_ko", "ttp_inferred"));
     }

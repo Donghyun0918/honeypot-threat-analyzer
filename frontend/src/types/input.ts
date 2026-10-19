@@ -54,4 +54,12 @@ export interface 공격로그입력 {
   행위시퀀스: string[];
   요청횟수: number;
   세션지속시간?: number;
+
+  // 원본 로그(logstash-*)에서 꺼낸 근거 — "더 깊게 분석" 직전에 채운다(/api/event-source).
+  // 원본확보가 false 면 위 페이로드·행위시퀀스·요청횟수는 화면이 채운 자리값이라
+  // 판단 근거가 아니다. undefined 면 예전 호출(근거 조회 없음).
+  원본확보?: boolean;
+  탐지서명?: string;
+  탐지분류?: string;
+  실행명령?: string[];
 }

@@ -71,9 +71,11 @@ function mapMl(r: Record<string, unknown>): 공격로그입력 {
   return { ...out, ...({ _is_attack: r["ml_is_attack"] !== false } as Record<string, unknown>) };
 }
 
-// llm-analysis-* 행 → 입력 (위험점수=risk_score, 위험등급=severity, summary 포함)
+// llm-analysis-* 행 → 입력 (위험점수=mitre_score, 위험등급=severity, summary 포함)
+// risk_score 는 0~10 척도다(mitre_score/10). 화면·프롬프트는 0~100 을 기대하므로
+// 그대로 쓰면 "위험 점수 8.5/100" 이 된다 — mitre_score 를 먼저 쓰고, 없을 때만 ×10.
 function mapLlm(r: Record<string, unknown>): 공격로그입력 {
-  const score = Number(r["risk_score"] ?? r["mitre_score"] ?? 0);
+  const score = r["mitre_score"] != null ? Number(r["mitre_score"]) : Number(r["risk_score"] ?? 0) * 10;
   const out = base(r, score, 0.9);
   const sev = r["severity"] ? String(r["severity"]) as 위험등급코드 : 등급계산(score);
   return {

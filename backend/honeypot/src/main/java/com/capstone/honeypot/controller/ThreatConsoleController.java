@@ -92,6 +92,11 @@ public class ThreatConsoleController {
         return service.llmExplain(id);
     }
 
+    @GetMapping("/api/event-source")
+    public Map<String, Object> eventSource(@RequestParam(required = false) String id) {
+        return service.eventSource(id);
+    }
+
     @GetMapping("/api/llm-stats")
     public Map<String, Object> llmStats(@RequestParam(required = false) String since) {
         return service.llmStats(since);
@@ -118,7 +123,7 @@ public class ThreatConsoleController {
         String window = (since == null || since.isBlank()) ? service.기본창() : since;
         List<Map<String, Object>> rows = service.exportLlm(window);
         List<String> cols = List.of("@timestamp", "severity", "risk_score", "mitre_score",
-                "src_ip", "honeypot", "ml_label",
+                "mitre_technique", "src_ip", "dest_port", "honeypot", "ml_label",
                 "summary_ko", "solution_ko", "ttp_inferred");
         return buildExport(rows, cols, "llm-analysis", window, format, true);
     }
