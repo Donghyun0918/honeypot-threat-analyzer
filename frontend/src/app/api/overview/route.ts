@@ -1,4 +1,4 @@
-// GET /api/overview — T-Pot 24시간 개요 통계.
+// GET /api/overview — T-Pot 개요 통계 (집계 창은 백엔드 설정, 기본 24시간).
 // Spring threat-console 백엔드(/api/overview)를 서버사이드로 프록시.
 // 반환: { since, total_events, total_attacks, high_risk, llm_analyzed }
 

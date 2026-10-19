@@ -13,6 +13,9 @@ RUN ./gradlew bootJar --no-daemon -x test -q
 
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
-COPY --from=builder /app/build/libs/*.jar app.jar
+# root 로 돌리지 않는다 — 웹 요청을 직접 받는 컨테이너다.
+RUN addgroup -S app && adduser -S -G app app
+COPY --chown=app:app --from=builder /app/build/libs/*.jar app.jar
+USER app
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "app.jar"]

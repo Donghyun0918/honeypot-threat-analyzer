@@ -124,11 +124,19 @@ function 전체리포트카드(r: Record<string, unknown>): string {
 
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 
+// 백엔드 집계 창("now-24h", "now-1y" …)을 화면 라벨로. 창을 모르면 "전체".
+function 창표기(since: string): { 영문: string; 한글: string } {
+  const m = /^now-(\d+)([hdwMy])$/.exec(since);
+  if (!m) return { 영문: "ALL", 한글: "전체" };
+  const 단위: Record<string, string> = { h: "시간", d: "일", w: "주", M: "개월", y: "년" };
+  return { 영문: `${m[1]}${m[2].toUpperCase()}`, 한글: `최근 ${m[1]}${단위[m[2]]}` };
+}
+
 export default function DashboardPage() {
   const [선택공격, set선택공격] = useState<공격로그입력 | null>(null);
   const [공격목록, set공격목록] = useState<공격로그입력[]>([]);
   const [목록오류, set목록오류] = useState<string | null>(null);
-  const [개요, set개요] = useState({ total_events: 0, total_attacks: 0, high_risk: 0, llm_analyzed: 0 });
+  const [개요, set개요] = useState({ since: "", total_events: 0, total_attacks: 0, high_risk: 0, llm_analyzed: 0 });
   const [모델정보, set모델정보] = useState<모델정보타입 | null>(null);
   // 지도는 라이브 이벤트가 흐를 때만 그려진다. 기본으로 펼쳐두면 대개 빈
   // 화면이 650px 를 차지하므로 접어둔다(사용자가 필요할 때 펼친다).
@@ -206,11 +214,12 @@ export default function DashboardPage() {
   }, [필터]);
   useEffect(() => { 공격목록새로고침(); }, [공격목록새로고침]);
 
-  // ── 24h 개요 통계 로드 (/api/overview) ───────────────────────────────────
+  // ── 개요 통계 로드 (/api/overview) — 집계 창은 백엔드 설정(THREAT_CONSOLE_WINDOW_SHORT)을 따른다 ──
   useEffect(() => {
     인증fetch("/api/overview")
       .then((r) => r.json())
       .then((d) => set개요({
+        since: d.since ?? "",
         total_events: d.total_events ?? 0,
         total_attacks: d.total_attacks ?? 0,
         high_risk: d.high_risk ?? 0,
@@ -1033,11 +1042,11 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* ── 24h 개요 통계 밴드 ── */}
+      {/* ── 개요 통계 밴드 ── */}
       <section className="개요밴드">
         <button className={`스탯카드 ${필터 === "all" ? "활성" : ""}`} onClick={() => set필터("all")} title="전체 로그 보기">
-          <span className="스탯머리"><span className="스탯아이콘 이벤트"><Database className="icon" /></span>| EVENTS · 24H</span>
-          <span className="스탯값">{개요.total_events.toLocaleString()}</span><span className="스탯라벨">총 이벤트 (24h)</span>
+          <span className="스탯머리"><span className="스탯아이콘 이벤트"><Database className="icon" /></span>| EVENTS · {창표기(개요.since).영문}</span>
+          <span className="스탯값">{개요.total_events.toLocaleString()}</span><span className="스탯라벨">총 이벤트 ({창표기(개요.since).한글})</span>
         </button>
         <button className={`스탯카드 ${필터 === "attacks" ? "활성" : ""}`} onClick={() => set필터("attacks")} title="분류된 공격만 보기">
           <span className="스탯머리"><span className="스탯아이콘 공격"><ShieldAlert className="icon" /></span>| CLASSIFIED</span>
