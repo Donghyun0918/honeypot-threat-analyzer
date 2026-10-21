@@ -62,13 +62,18 @@ app.prepare().then(() => {
   });
 
   // WebSocket 업그레이드 프록시
+  //
+  // changeOrigin 을 끈다. map_web 은 CSWSH 방어로 Origin 의 host 가 Host 헤더와 같아야
+  // 받는데, changeOrigin 이 Host 를 map_web:64299 로 바꾸면 브라우저 Origin(대시보드 주소)과
+  // 영영 안 맞아 403 "WebSocket origin not allowed" → 어택맵이 Disconnected 로 남는다.
+  // 브라우저가 보낸 Host 를 그대로 넘기면 같은 출처에서 연 대시보드만 통과한다.
   server.on("upgrade", (req, socket, head) => {
     const url = req.url || "";
     if (isWs(url)) {
-      proxy.ws(req, socket, head, { target: TPOT });
+      proxy.ws(req, socket, head, { target: TPOT, changeOrigin: false });
     } else if (isMap(url)) {
       req.url = stripPrefix(url);
-      proxy.ws(req, socket, head, { target: TPOT });
+      proxy.ws(req, socket, head, { target: TPOT, changeOrigin: false });
     } else {
       socket.destroy();
     }
