@@ -68,3 +68,13 @@ tpotce/data/ml-classifier/heartbeat
 # 백업(계정 해시 포함) · 세션 설정
 backups/
 .claude/
+
+# === Terraform (infra/terraform) ===
+# state 에는 리소스 ID · 공인 IP 가 남는다. lock 파일은 추적한다.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+tfplan

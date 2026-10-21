@@ -1,0 +1,204 @@
+#!/usr/bin/env bash
+# 첫 부팅 때 cloud-init 이 root 로 한 번 실행한다. 진행 로그: /var/log/jsp-bootstrap.log
+# Terraform templatefile 이라 셸 변수의 중괄호 형식은 쓰지 않는다(템플릿 문법과 겹친다).
+#
+# honeypot=false : Docker 설치 → 대시보드 스택(setup.sh) 기동. 한 번에 끝난다.
+# honeypot=true  : 1단계(지금) T-Pot 설치 + 우리 수정분(aws_overlay.yml) → 재부팅
+#                  2단계(재부팅 후 jsp-stage2.service) T-Pot ES 가 뜨면 대시보드 스택 기동
+set -euo pipefail
+exec > >(tee -a /var/log/jsp-bootstrap.log) 2>&1
+
+REGION="${region}"
+REPO_URL="${repo_url}"
+REPO_REF="${repo_ref}"
+SSM_PREFIX="${ssm_prefix}"
+LLM_MODEL="${llm_model}"
+MODELS_S3_URI="${models_s3_uri}"
+SEED_DEMO_DATA="${seed_demo_data}"
+HONEYPOT="${honeypot}"
+TPOT_VERSION="${tpot_version}"
+TPOT_WEB_USER="${tpot_web_user}"
+APP_DIR=/opt/jsp
+
+echo "== $(date -Is) bootstrap 시작 (honeypot=$HONEYPOT)"
+
+# ── 1. 기본 패키지 ────────────────────────────────────────────────
+export DEBIAN_FRONTEND=noninteractive
+# 첫 부팅의 자동 업데이트가 apt 잠금을 쥐고 있으면 T-Pot 의 ansible 이 실패한다.
+systemctl stop unattended-upgrades.service 2>/dev/null || true
+APT="apt-get -o DPkg::Lock::Timeout=600"
+$APT update -y
+$APT install -y ca-certificates curl git openssl python3 unzip
+
+if ! command -v aws >/dev/null 2>&1; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+  unzip -q -o /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+  rm -rf /tmp/aws /tmp/awscliv2.zip
+fi
+
+# Elasticsearch 는 이 값이 낮으면 기동하지 않는다.
+echo "vm.max_map_count=262144" > /etc/sysctl.d/99-elasticsearch.conf
+sysctl --system >/dev/null
+
+ssm_get() {
+  local v
+  v=$(aws ssm get-parameter --region "$REGION" --with-decryption \
+        --name "$SSM_PREFIX/$1" --query Parameter.Value --output text 2>/dev/null || true)
+  [ "$v" = "None" ] && v=""
+  printf '%s' "$v"
+}
+# 없으면 만들어 SSM 에 남긴다 — 서버를 다시 만들어도 같은 값을 쓰게.
+ssm_get_or_create() {
+  local v
+  v=$(ssm_get "$1")
+  if [ -z "$v" ]; then
+    v=$(openssl rand -hex 24)
+    aws ssm put-parameter --region "$REGION" --type SecureString \
+      --name "$SSM_PREFIX/$1" --value "$v" >/dev/null
+    echo "  $1 새로 만들어 SSM 에 저장" >&2
+  fi
+  printf '%s' "$v"
+}
+
+# ── 2. 저장소 · 분류 모델 ──────────────────────────────────────────
+if [ ! -d "$APP_DIR/.git" ]; then
+  git clone "$REPO_URL" "$APP_DIR"
+fi
+git -C "$APP_DIR" fetch --all --tags
+git -C "$APP_DIR" checkout "$REPO_REF"
+cd "$APP_DIR"
+
+mkdir -p tpotce/data/ml-classifier/models
+if [ -n "$MODELS_S3_URI" ]; then
+  aws s3 cp --recursive --region "$REGION" "$MODELS_S3_URI" tpotce/data/ml-classifier/models/
+fi
+
+# ── 3. .env ─────────────────────────────────────────────────────
+# 값은 SSM Parameter Store 에서만 읽는다. Terraform state · user_data 에는 비밀이 없다.
+set_env() {   # 주석 처리된 줄까지 지우고 다시 쓴다
+  local tmp; tmp=$(mktemp)
+  grep -v -E "^#? ?$1=" .env > "$tmp" || true
+  printf '%s=%s\n' "$1" "$2" >> "$tmp"
+  mv "$tmp" .env
+}
+
+if [ ! -f .env ]; then
+  cp .env.example .env
+
+  api_key=$(ssm_get anthropic_api_key)
+  [ -n "$api_key" ] || echo "  ! $SSM_PREFIX/anthropic_api_key 가 없습니다 — 해설은 폴백 문장으로만 채워집니다."
+
+  set_env LLM_PROVIDER anthropic
+  set_env LLM_MODEL "$LLM_MODEL"
+  set_env ANTHROPIC_API_KEY "$api_key"
+  # Postgres 비밀번호는 DB 볼륨이 처음 만들어지기 전에 정해져야 한다.
+  set_env POSTGRES_PASSWORD "$(ssm_get_or_create postgres_password)"
+  # setup.sh 는 .env 가 이미 있으면 키를 만들지 않으므로 여기서 발급한다.
+  set_env JWT_SECRET "$(openssl rand -base64 48 | tr -d '\n')"
+  set_env INTERNAL_SERVICE_TOKEN "$(openssl rand -hex 24)"
+  # 대시보드는 HTTP(:8002) 로 연다. TLS 를 앞에 두면 true 로 바꾼다.
+  set_env COOKIE_SECURE false
+  if [ "$HONEYPOT" = "true" ]; then
+    # T-Pot ES 를 읽는다 — docker-compose.tpot.yml 참조
+    set_env COMPOSE_FILE docker-compose.yml:docker-compose.tpot.yml
+    set_env SETUP_ES_URL http://127.0.0.1:64298
+  fi
+  chmod 600 .env
+fi
+
+SETUP_ARGS="--no-seed"
+[ "$SEED_DEMO_DATA" = "true" ] && SETUP_ARGS=""
+
+# ── 4a. 대시보드만 ───────────────────────────────────────────────
+if [ "$HONEYPOT" != "true" ]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+    chmod a+r /etc/apt/keyrings/docker.asc
+    . /etc/os-release
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" \
+      > /etc/apt/sources.list.d/docker.list
+    $APT update -y
+    $APT install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  fi
+  systemctl enable --now docker
+  usermod -aG docker ubuntu
+
+  # LLM_MODEL 이 Claude 라 setup.sh 5단계는 로컬 모델을 받지 않는다.
+  ./setup.sh $SETUP_ARGS
+  echo "== $(date -Is) bootstrap 끝"
+  exit 0
+fi
+
+# ── 4b. T-Pot 설치 (1단계) ───────────────────────────────────────
+# T-Pot 설치기는 root 실행을 거부한다. ubuntu 는 암호 없는 sudo 가 있어 ansible 이 --become 으로 돈다.
+# Docker 도 설치기가 깐다. SSH 는 64295 로 옮겨진다.
+TPOT_WEB_PW=$(ssm_get_or_create tpot_web_password)
+if [ ! -d /home/ubuntu/tpotce/.git ]; then
+  sudo -u ubuntu -H git clone --depth 1 --branch "$TPOT_VERSION" \
+    https://github.com/telekom-security/tpotce /home/ubuntu/tpotce
+fi
+sudo -u ubuntu -H env TPOT_WEB_USER="$TPOT_WEB_USER" TPOT_WEB_PW="$TPOT_WEB_PW" bash -c \
+  'cd ~/tpotce && ./install.sh -s -t h -u "$TPOT_WEB_USER" -p "$TPOT_WEB_PW"'
+
+# 우리 수정분(threat-console · 한국어 Kibana · 한국어 메인 페이지 · 어택맵 타일 패치)을
+# tpot.service 가 같이 띄우게 한다 — tpotce/compose/aws_overlay.yml 참조.
+grep -q '^JSP_DIR=' /home/ubuntu/tpotce/.env || echo "JSP_DIR=$APP_DIR" >> /home/ubuntu/tpotce/.env
+# threat-console · 분류기는 uid 2000 으로 돈다(BYOM 업로드가 모델 디렉토리에 쓴다).
+mkdir -p /home/ubuntu/tpotce/data/threat-console
+chown -R 2000:2000 /home/ubuntu/tpotce/data/threat-console "$APP_DIR/tpotce/data/ml-classifier"
+
+TPOT_COMPOSE="/usr/bin/docker compose -f /home/ubuntu/tpotce/docker-compose.yml -f $APP_DIR/tpotce/compose/aws_overlay.yml"
+mkdir -p /etc/systemd/system/tpot.service.d
+cat > /etc/systemd/system/tpot.service.d/jsp-overlay.conf <<UNIT
+[Service]
+ExecStartPre=
+ExecStartPre=-$TPOT_COMPOSE down -v
+ExecStart=
+ExecStart=$TPOT_COMPOSE up
+ExecStop=
+ExecStop=$TPOT_COMPOSE down -v
+UNIT
+# 빌드 실패를 재부팅 전에 이 로그에서 보이게 미리 만든다(tpot.service 의 up 은 빌드 실패 시 재시작만 반복한다).
+$TPOT_COMPOSE build threat-console
+
+# ── 2단계: 재부팅 뒤 T-Pot ES 가 뜨면 대시보드 스택을 올린다 ─────────────
+cat > /usr/local/sbin/jsp-stage2.sh <<'STAGE2'
+#!/usr/bin/env bash
+set -euo pipefail
+exec >> /var/log/jsp-bootstrap.log 2>&1
+echo "== $(date -Is) 2단계 시작 — T-Pot ES 대기"
+for i in $(seq 1 120); do
+  curl -sf -m 3 http://127.0.0.1:64298/_cluster/health >/dev/null && break
+  [ "$i" = "120" ] && { echo "  ! T-Pot ES 가 20분 안에 뜨지 않았습니다 — systemctl status tpot"; exit 1; }
+  sleep 10
+done
+cd /opt/jsp
+./setup.sh $(cat /etc/jsp-setup-args)
+touch /var/lib/jsp-stage2.done
+echo "== $(date -Is) bootstrap 끝"
+STAGE2
+chmod 755 /usr/local/sbin/jsp-stage2.sh
+echo "$SETUP_ARGS" > /etc/jsp-setup-args
+
+cat > /etc/systemd/system/jsp-stage2.service <<'UNIT'
+[Unit]
+Description=Dashboard stack on top of T-Pot (one-shot)
+After=docker.service tpot.service network-online.target
+Wants=network-online.target
+ConditionPathExists=!/var/lib/jsp-stage2.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/jsp-stage2.sh
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable jsp-stage2.service
+
+echo "== $(date -Is) 1단계 끝 — 1분 뒤 재부팅"
+shutdown -r +1 "T-Pot 설치 후 재부팅"

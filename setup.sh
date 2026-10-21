@@ -134,11 +134,17 @@ ok "빌드 완료"
 
 # ─────────────────────────────────────────────────────────────────────────────
 head_ "4. 스택 기동"
+
+# 호스트에서 본 ES 주소. 기본은 스택 안의 ES(19300)다. T-Pot 위에 얹을 때는
+# .env 의 SETUP_ES_URL 로 T-Pot ES 를 가리킨다(docker-compose.tpot.yml 참조).
+ES_URL=$(grep -E '^SETUP_ES_URL=' .env | cut -d= -f2- || true)
+ES_URL=${ES_URL:-http://127.0.0.1:19300}
+
 docker compose up -d 2>&1 | tail -3 | sed 's/^/  /'
 
 say "${C_DIM}Elasticsearch 준비 대기…${C_OFF}"
 for i in $(seq 1 60); do
-  st=$(curl -sS -m 3 http://127.0.0.1:19300/_cluster/health 2>/dev/null \
+  st=$(curl -sS -m 3 ${ES_URL}/_cluster/health 2>/dev/null \
        | sed -n 's/.*"status":"\([a-z]*\)".*/\1/p' || true)
   if [ -n "$st" ]; then ok "Elasticsearch $st"; break; fi
   sleep 3
@@ -168,10 +174,13 @@ model_size_hint() {
 
 model=$(grep -E '^LLM_MODEL=' .env | cut -d= -f2- || true)
 model=${model:-qwen2.5:3b}
+provider=$(grep -E '^LLM_PROVIDER=' .env | cut -d= -f2- || true)
 
 # 이름+태그를 정확히 맞춘다. 예전엔 태그를 떼고(${model%%:*}) 부분 일치로 봤는데,
 # 그러면 qwen2.5:7b 가 있을 때 qwen2.5:3b 도 "준비됨" 으로 통과한다.
-if docker exec dev-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "$model"; then
+if [ "${provider:-ollama}" != "ollama" ]; then
+  ok "LLM_PROVIDER=${provider} — 로컬 모델은 받지 않음"
+elif docker exec dev-ollama ollama list 2>/dev/null | awk '{print $1}' | grep -Fxq "$model"; then
   ok "${model} 준비됨"
 else
   size_hint=$(model_size_hint "$model" || true)
@@ -197,16 +206,16 @@ if [ "$SEED" = "1" ] && [ -n "$TESTS_DIR" ]; then
     # 봤는데, 그러면 이미 데이터가 쌓인 스택에서는 주입분이 분류되기도 전에
     # 즉시 통과한다("1028698건 분류됨"). 검증이 아니라 통과 선언이었다.
     seed_count=80
-    before=$(curl -sS -m 3 "http://127.0.0.1:19300/ml-analysis-*/_count" 2>/dev/null \
+    before=$(curl -sS -m 3 "${ES_URL}/ml-analysis-*/_count" 2>/dev/null \
              | sed -n 's/.*"count":\([0-9]*\).*/\1/p' || echo 0)
     before=${before:-0}
-    python3 "$TESTS_DIR/inject_sample_docs.py" --host http://127.0.0.1:19300 --count "$seed_count" 2>&1 | sed 's/^/  /'
+    python3 "$TESTS_DIR/inject_sample_docs.py" --host "$ES_URL" --count "$seed_count" 2>&1 | sed 's/^/  /'
     say "${C_DIM}분류 대기…${C_OFF}"
     # 분류기는 POLL_INTERVAL(기본 30초) 주기라 2분이면 넉넉하다.
     target=$(( before + seed_count ))
     classified=0
     for i in $(seq 1 24); do
-      n=$(curl -sS -m 3 "http://127.0.0.1:19300/ml-analysis-*/_count" 2>/dev/null \
+      n=$(curl -sS -m 3 "${ES_URL}/ml-analysis-*/_count" 2>/dev/null \
           | sed -n 's/.*"count":\([0-9]*\).*/\1/p' || echo 0)
       n=${n:-0}
       if [ "$n" -ge "$target" ]; then classified=1; ok "주입 ${seed_count}건 분류 완료 (${before} → ${n})"; break; fi

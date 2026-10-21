@@ -1,0 +1,11 @@
+# cp terraform.tfvars.example terraform.tfvars 후 고친다(terraform.tfvars 는 git 제외).
+
+region          = "ap-northeast-2"
+honeypot        = true         # false 면 대시보드만(공격 수집 없음), instance_type 은 t3.large 로
+instance_type   = "m6i.xlarge" # T-Pot HIVE 는 RAM 16GB 필요
+root_volume_gb  = 128
+dashboard_cidrs = ["0.0.0.0/0"] # 평가자 IP 를 알면 ["x.x.x.x/32"] 로 좁힌다
+admin_cidrs     = []            # 비우면 SSM 으로만 접속(T-Pot 웹은 포트 포워딩). 내 IP 를 넣으면 SSH 64295 · 웹 64297 이 열린다
+# key_name      = "tpot-key"
+# models_s3_uri = "s3://<bucket>/ml-classifier/models/"
+seed_demo_data = false

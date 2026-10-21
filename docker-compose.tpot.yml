@@ -1,0 +1,58 @@
+# [AWS 허니팟 서버] T-Pot(~/tpotce, HIVE) 위에 대시보드 스택을 얹는 덮어쓰기 파일.
+#
+# 쓰는 법 — .env 에 두 줄을 넣으면 docker compose · setup.sh 가 알아서 이 파일을 합친다:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.tpot.yml
+#   SETUP_ES_URL=http://127.0.0.1:64298
+# T-Pot 이 먼저 떠 있어야 한다(tpotce_nginx_local 네트워크가 있어야 함).
+#
+# 바뀌는 것:
+#   · 스택 안의 ES · Ollama · 어택맵은 띄우지 않는다(프로파일로 뺌).
+#   · ES 를 쓰는 서비스만 T-Pot 의 nginx_local 네트워크에 붙인다. 거기서 `elasticsearch`
+#     는 T-Pot ES 이므로 ES_HOST 기본값(http://elasticsearch:9200)을 그대로 쓴다.
+#   · 프론트의 /tpot-map/ 은 T-Pot 의 map_web 으로 간다.
+#
+# T-Pot 네트워크에 붙는 서비스는 그 네트워크에 서비스 이름이 별칭으로 올라간다.
+# T-Pot 서비스와 이름이 겹치면(map_web 등) T-Pot nginx 가 우리 컨테이너로 갈 수 있으므로
+# 겹치지 않는 서비스만 붙인다. 허니팟 컨테이너들은 이 네트워크에 없다.
+#
+# 이 파일의 `!override` 는 docker compose 2.24.4 이상이 필요하다.
+
+networks:
+  tpot:
+    name: tpotce_nginx_local
+    external: true
+
+services:
+  elasticsearch:
+    profiles: ["local-es"]
+  ollama:
+    profiles: ["ollama"]
+  ollama-model-pull:
+    profiles: ["ollama"]
+  map_redis:
+    profiles: ["local-map"]
+  map_web:
+    profiles: ["local-map"]
+  map_data:
+    profiles: ["local-map"]
+
+  backend:
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+    networks: [default, tpot]
+
+  ml-classifier:
+    depends_on: !override []
+    networks: [default, tpot]
+
+  llm-analyzer:
+    depends_on: !override
+      ml-classifier:
+        condition: service_started
+    networks: [default, tpot]
+
+  frontend:
+    depends_on: !override
+      - backend
+    networks: [default, tpot]
