@@ -18,9 +18,36 @@ SEED_DEMO_DATA="${seed_demo_data}"
 HONEYPOT="${honeypot}"
 TPOT_VERSION="${tpot_version}"
 TPOT_WEB_USER="${tpot_web_user}"
+EXPIRE_HOURS="${expire_hours}"
 APP_DIR=/opt/jsp
 
 echo "== $(date -Is) bootstrap 시작 (honeypot=$HONEYPOT)"
+
+# ── 0. 만료 타이머 ───────────────────────────────────────────────
+# 시각을 절대값으로 박는다 — T-Pot 의 매일 재부팅에도 기한이 밀리지 않게.
+# 인스턴스의 shutdown 동작이 terminate 라 꺼지면 루트 볼륨까지 지워진다.
+if [ "$EXPIRE_HOURS" -gt 0 ] && [ ! -f /etc/systemd/system/jsp-expire.timer ]; then
+  EXPIRE_AT=$(date -u -d "+$EXPIRE_HOURS hours" '+%Y-%m-%d %H:%M:%S UTC')
+  cat > /etc/systemd/system/jsp-expire.service <<UNIT
+[Unit]
+Description=Expire this honeypot server (terminate on poweroff)
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl poweroff
+UNIT
+  cat > /etc/systemd/system/jsp-expire.timer <<UNIT
+[Unit]
+Description=Expire this honeypot server at $EXPIRE_AT
+[Timer]
+OnCalendar=$EXPIRE_AT
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl daemon-reload
+  systemctl enable --now jsp-expire.timer
+  echo "  만료: $EXPIRE_AT 에 서버 종료"
+fi
 
 # ── 1. 기본 패키지 ────────────────────────────────────────────────
 export DEBIAN_FRONTEND=noninteractive
@@ -132,15 +159,21 @@ if [ "$HONEYPOT" != "true" ]; then
 fi
 
 # ── 4b. T-Pot 설치 (1단계) ───────────────────────────────────────
-# T-Pot 설치기는 root 실행을 거부한다. ubuntu 는 암호 없는 sudo 가 있어 ansible 이 --become 으로 돈다.
-# Docker 도 설치기가 깐다. SSH 는 64295 로 옮겨진다.
+# 24.04.1 의 install.sh 는 대화형뿐이다(-s · -t 같은 무인 옵션이 없어 stdin EOF 에서 무한 반복).
+# 그래서 install.sh 가 하는 일을 그대로 따라 한다: 패키지 → ansible 플레이북 → HIVE compose → 웹 사용자 → pull.
+# 플레이북은 ubuntu 사용자로 돈다(암호 없는 sudo 라 --become). Docker 도 플레이북이 깔고, SSH 는 64295 로 옮겨진다.
 TPOT_WEB_PW=$(ssm_get_or_create tpot_web_password)
 if [ ! -d /home/ubuntu/tpotce/.git ]; then
   sudo -u ubuntu -H git clone --depth 1 --branch "$TPOT_VERSION" \
     https://github.com/telekom-security/tpotce /home/ubuntu/tpotce
 fi
-sudo -u ubuntu -H env TPOT_WEB_USER="$TPOT_WEB_USER" TPOT_WEB_PW="$TPOT_WEB_PW" bash -c \
-  'cd ~/tpotce && ./install.sh -s -t h -u "$TPOT_WEB_USER" -p "$TPOT_WEB_PW"'
+NEEDRESTART_SUSPEND=1 $APT install -y ansible apache2-utils cracklib-runtime wget
+sudo -u ubuntu -H bash -c 'cd ~/tpotce && ANSIBLE_LOG_PATH=$HOME/install_tpot.log \
+  ansible-playbook installer/install/tpot.yml -i 127.0.0.1, -c local --tags Ubuntu --become </dev/null'
+sudo -u ubuntu -H cp /home/ubuntu/tpotce/compose/standard.yml /home/ubuntu/tpotce/docker-compose.yml
+WEB_USER_B64=$(htpasswd -b -n "$TPOT_WEB_USER" "$TPOT_WEB_PW" | tr -d '\n' | base64 -w0)
+sed -i "s|^WEB_USER=.*|WEB_USER=$WEB_USER_B64|" /home/ubuntu/tpotce/.env
+docker compose -f /home/ubuntu/tpotce/docker-compose.yml pull -q
 
 # 우리 수정분(threat-console · 한국어 Kibana · 한국어 메인 페이지 · 어택맵 타일 패치)을
 # tpot.service 가 같이 띄우게 한다 — tpotce/compose/aws_overlay.yml 참조.

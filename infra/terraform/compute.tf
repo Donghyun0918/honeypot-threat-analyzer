@@ -16,7 +16,9 @@ resource "aws_instance" "app" {
   iam_instance_profile   = aws_iam_instance_profile.app.name
   key_name               = var.key_name
   ebs_optimized          = true
-  monitoring             = true
+  # expire_hours 가 켜져 있으면 서버 안에서 끈 것이 곧 종료다(user_data 의 만료 타이머).
+  instance_initiated_shutdown_behavior = var.expire_hours > 0 ? "terminate" : "stop"
+  monitoring                           = true
 
   # 2층 구조: Terraform 은 인프라까지, 서비스 기동은 user_data 가 setup.sh 에 넘긴다.
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
@@ -30,6 +32,7 @@ resource "aws_instance" "app" {
     honeypot       = var.honeypot
     tpot_version   = var.tpot_version
     tpot_web_user  = var.tpot_web_user
+    expire_hours   = var.expire_hours
   })
   # user_data 를 고쳐도 서버를 갈아엎지 않는다(ES 데이터가 루트 볼륨에 있다).
   # 다시 부트스트랩하려면 terraform apply -replace=aws_instance.app

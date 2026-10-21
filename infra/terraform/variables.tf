@@ -108,3 +108,9 @@ variable "tpot_web_user" {
   type        = string
   default     = "tpotadmin"
 }
+
+variable "expire_hours" {
+  description = "0 보다 크면 서버가 첫 부팅 이 시간 뒤 스스로 꺼지고 종료(terminate)된다 — 루트 볼륨도 지워진다. 남는 VPC · EIP 는 terraform destroy 로 지운다."
+  type        = number
+  default     = 0
+}
