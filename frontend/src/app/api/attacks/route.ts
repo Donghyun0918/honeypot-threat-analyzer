@@ -43,8 +43,13 @@ function base(r: Record<string, unknown>, score: number, conf: number): 공격�
   const label = String(r["ml_label"] ?? "");
   const honeypot = String(r["honeypot"] ?? "unknown");
   const port = r["dest_port"] != null ? Number(r["dest_port"]) : undefined;
+  // 사건ID 는 화면 목록의 React key 이자 선택 표시 기준이다. 시각(초)+IP 만으로는
+  // 허니팟이 몰릴 때(같은 초에 같은 IP 수십 건) 겹쳐서, 새로고침하면 React 가 옛 행을
+  // 못 지우고 새 행을 아래에 붙였다(100건이 170건, 최신이 아래로 — 10-22 AWS).
+  // 원본 문서 _id 는 문서마다 하나라 그걸 쓴다.
+  const docId = r["source_doc_id"] ? String(r["source_doc_id"]) : null;
   return {
-    사건ID: `ES-${ts.slice(0, 19)}-${ip}`,
+    사건ID: docId ? `ES-${docId}` : `ES-${ts.slice(0, 19)}-${ip}`,
     허니팟ID: honeypot,
     발생시각: ts,
     공격자IP: ip,
