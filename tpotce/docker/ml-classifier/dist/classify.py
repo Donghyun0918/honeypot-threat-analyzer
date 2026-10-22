@@ -28,6 +28,7 @@ import os
 import signal
 import sys
 import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -391,6 +392,29 @@ def _target_index_for(ts_iso: str) -> str:
     return f"{TARGET_PREFIX}{d.strftime('%Y.%m.%d')}"
 
 
+# Cowrie 는 dest_port 를 session.connect 에만 쓰고, 같은 세션의 로그인·명령·파일 다운로드에는
+# 안 쓴다. 그대로 옮기면 SSH/Telnet 의 고위험(명령·다운로드)이 포트 집계에서 전부 빠진다 —
+# 4~5월 수집분 Cowrie 고위험 16건이 모두 그래서 "22번 고위험 0건" 이 되었다(10-22 피드백 확인).
+# 문서는 시각순으로 들어오므로 connect 가 먼저 오고, 세션 → 포트를 기억해 두면 채울 수 있다.
+# 재기동하면 비워지므로 재기동을 걸친 세션의 앞부분 이후 행은 여전히 비어 있을 수 있다.
+_SESSION_PORT: "OrderedDict[str, int]" = OrderedDict()
+_SESSION_PORT_MAX = 50_000
+
+
+def _dest_port(src_doc: dict):
+    port = src_doc.get("dest_port")
+    session = src_doc.get("session")
+    if str(src_doc.get("type") or "").lower() != "cowrie" or not session:
+        return port
+    if port is not None:
+        _SESSION_PORT[session] = port
+        _SESSION_PORT.move_to_end(session)
+        if len(_SESSION_PORT) > _SESSION_PORT_MAX:
+            _SESSION_PORT.popitem(last=False)
+        return port
+    return _SESSION_PORT.get(session)
+
+
 def _build_action(src_doc: dict, src_index: str, src_id: str, result: dict) -> dict:
     ts = src_doc.get("@timestamp") or datetime.now(timezone.utc).isoformat()
     return {
@@ -407,7 +431,7 @@ def _build_action(src_doc: dict, src_index: str, src_id: str, result: dict) -> d
             "source_index": src_index,
             "src_ip": src_doc.get("src_ip"),
             "dest_ip": src_doc.get("dest_ip"),
-            "dest_port": src_doc.get("dest_port"),
+            "dest_port": _dest_port(src_doc),
             "honeypot": src_doc.get("type"),
             **result,
         },
