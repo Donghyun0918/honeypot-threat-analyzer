@@ -156,6 +156,8 @@ export default function DashboardPage() {
   const [노출, set노출] = useState<{ 노출목록: 노출타입[]; 위험포트수: number; 해당이벤트: number } | null>(null);
   const router = useRouter();
   const [필터, set필터] = useState<"all" | "attacks" | "highrisk" | "llm">("all");
+  // P0f · Fatt · 경보 없는 Suricata 기록은 들어오는 행의 90% 넘게 차지해서 기본으로 숨긴다.
+  const [센서포함, set센서포함] = useState(false);
   const [분석중, set분석중] = useState(false);
   const [서버상태, set서버상태] = useState<{ 연결됨: boolean; 모델: string }>({ 연결됨: false, 모델: "" });
   const [스트리밍텍스트, set스트리밍텍스트] = useState("");
@@ -204,17 +206,30 @@ export default function DashboardPage() {
   }, []);
 
   // ── 실 T-Pot 공격로그 목록 로드 (ES ml-analysis-*) ────────────────────────
+  // 필터는 백엔드가 카드와 같은 조건으로 건다(/api/attacks 참조). 필터를 바꾼 직후
+  // 앞서 보낸 요청이 늦게 돌아와 새 목록을 덮지 않도록 마지막 요청만 반영한다.
+  const 목록요청번호 = useRef(0);
   const 공격목록새로고침 = useCallback(() => {
     const view = 필터 === "llm" ? "llm" : "ml";
-    인증fetch(`/api/attacks?view=${view}`)
+    const 번호 = ++목록요청번호.current;
+    인증fetch(`/api/attacks?view=${view}&filter=${view === "llm" ? "all" : 필터}&sensors=${센서포함 ? 1 : 0}`)
       .then((r) => r.json())
       .then((data: { 공격목록: 공격로그입력[]; 오류?: string }) => {
+        if (번호 !== 목록요청번호.current) return;
         set공격목록(data.공격목록 ?? []);
         set목록오류(data.오류 ?? null);
       })
-      .catch((e) => set목록오류(String(e)));
-  }, [필터]);
+      .catch((e) => { if (번호 === 목록요청번호.current) set목록오류(String(e)); });
+  }, [필터, 센서포함]);
   useEffect(() => { 공격목록새로고침(); }, [공격목록새로고침]);
+
+  // 자동 새로고침 — 허니팟은 초 단위로 들어온다. 탭이 가려져 있으면 쉬고, 돌아오면 바로 받는다.
+  useEffect(() => {
+    const 주기 = setInterval(() => { if (!document.hidden) 공격목록새로고침(); }, 15_000);
+    const 복귀 = () => { if (!document.hidden) 공격목록새로고침(); };
+    document.addEventListener("visibilitychange", 복귀);
+    return () => { clearInterval(주기); document.removeEventListener("visibilitychange", 복귀); };
+  }, [공격목록새로고침]);
 
   // ── 개요 통계 로드 (/api/overview) — 집계 창은 백엔드 설정(THREAT_CONSOLE_WINDOW_SHORT)을 따른다 ──
   useEffect(() => {
@@ -721,12 +736,9 @@ export default function DashboardPage() {
   const 활성색 = 건강점수 !== null ? (건강점수 < 34 ? "#ff4d6d" : 건강점수 < 67 ? "#ffc861" : "#c9f24a") : "#c9f24a";
   const 건강라벨 = 건강점수 !== null ? (건강점수 < 34 ? "위험" : 건강점수 < 67 ? "주의" : "양호") : "";
 
-  // 개요 스탯 클릭 필터 적용
-  const 표시목록 = 공격목록.filter((a) => {
-    if (필터 === "attacks") return (a as unknown as { _is_attack?: boolean })._is_attack !== false;
-    if (필터 === "highrisk") return a.위험점수 >= 70;
-    return true; // all / llm (소스에서 이미 필터됨)
-  });
+  // 개요 스탯 필터는 백엔드가 이미 걸었다 — 여기서 받은 100건 안을 다시 거르면
+  // 카드 숫자와 목록이 다른 집합을 보게 된다.
+  const 표시목록 = 공격목록;
 
   /* 유형별 건수와 그 유형에서 관측된 최고 위험등급. 건수 내림차순. */
   const 유형분포: [string, number, string][] = (() => {
@@ -901,6 +913,8 @@ export default function DashboardPage() {
         .섹션헤더 { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
         .섹션번호 { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.16em; color: var(--accent); flex-shrink: 0; }
         .섹션제목 { font-size: 0.95rem; font-weight: 600; color: var(--text); }
+        .센서토글 { margin-left: auto; font-size: 0.68rem; color: var(--text-3); display: inline-flex; align-items: center; gap: 4px; cursor: pointer; user-select: none; }
+        .센서토글 + .섹션설명 { margin-left: 10px; }
         .섹션설명 { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em; color: var(--text-3); margin-left: auto; display: inline-flex; align-items: center; gap: 6px; transition: color .2s; }
         .섹션설명[title]:hover { color: var(--accent); }
         /* 바깥 패널에 스크롤을 걸면 목록 스크롤과 겹쳐 중첩 스크롤이 된다.
@@ -1091,7 +1105,12 @@ export default function DashboardPage() {
             <div className="섹션헤더">
               <div className="섹션번호">01</div>
               <span className="섹션제목">최근 공격 로그</span>
-              <span className="섹션설명" style={{ cursor: "pointer" }} onClick={공격목록새로고침} title="새로고침"><RefreshCw className="icon" /> {표시목록.length}건</span>
+              {필터 !== "llm" && (
+                <label className="센서토글" title="P0f · Fatt 지문 기록과 경보 없는 Suricata 흐름 기록 — 연결마다 쌓여 실제 공격을 가린다">
+                  <input type="checkbox" checked={센서포함} onChange={(e) => set센서포함(e.target.checked)} /> 센서 기록 포함
+                </label>
+              )}
+              <span className="섹션설명" style={{ cursor: "pointer" }} onClick={공격목록새로고침} title="새로고침(15초마다 자동)"><RefreshCw className="icon" /> {표시목록.length}건</span>
             </div>
             {필터 !== "all" && (
               <div className="필터줄">

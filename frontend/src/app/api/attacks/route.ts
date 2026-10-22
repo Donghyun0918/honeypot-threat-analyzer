@@ -1,6 +1,9 @@
-// GET /api/attacks?view=ml|llm — T-Pot ES 공격 로그 목록.
+// GET /api/attacks?view=ml|llm&filter=all|attacks|highrisk&sensors=0|1 — T-Pot ES 공격 로그 목록.
 // Spring threat-console 백엔드를 서버사이드로 프록시 후 공격로그입력 형태로 매핑.
-//   view=ml (기본): ml-analysis-* (분류 로그 전체, 공격+정상). 개요 "총/공격/고위험" 필터용.
+//   view=ml (기본): ml-analysis-* 최근순 100건(/api/attacks/recent). filter 는 개요 카드와
+//                   같은 조건으로 백엔드가 거른다 — 화면이 받은 100건 안에서 거르면 카드는
+//                   "고위험 2,159" 인데 목록은 0건이 된다. sensors=0(기본)이면 P0f · Fatt ·
+//                   경보 없는 Suricata 기록을 뺀다.
 //   view=llm       : llm-analysis-* (LLM 분석된 로그). 개요 "LLM 분석" 필터용.
 
 import { NextResponse, type NextRequest } from "next/server";
@@ -90,11 +93,18 @@ function mapLlm(r: Record<string, unknown>): 공격로그입력 {
   };
 }
 
+const 목록필터 = new Set(["all", "attacks", "highrisk"]);
+
 export async function GET(req: NextRequest) {
-  const view = new URL(req.url).searchParams.get("view") === "llm" ? "llm" : "ml";
-  const path = view === "llm" ? "/api/export/llm" : "/api/export/ml";
+  const q = new URL(req.url).searchParams;
+  const view = q.get("view") === "llm" ? "llm" : "ml";
+  const filter = 목록필터.has(q.get("filter") ?? "") ? q.get("filter") : "all";
+  const sensors = q.get("sensors") === "1";
+  const path = view === "llm"
+    ? "/api/export/llm?format=json"
+    : `/api/attacks/recent?filter=${filter}&sensors=${sensors}&size=100`;
   try {
-    const res = await fetch(`${API}${path}?format=json`, { cache: "no-store", headers: 인증전달(req) });
+    const res = await fetch(`${API}${path}`, { cache: "no-store", headers: 인증전달(req) });
     // 인증 실패는 아래 빈-응답 처리로 덮지 않고 그대로 올린다(세션쿠키.ts 참조).
     const 인증거부 = 인증실패통과(res.status);
     if (인증거부) return 인증거부;

@@ -102,6 +102,17 @@ public class ThreatConsoleController {
         return service.llmStats(since);
     }
 
+    // 대시보드 "최근 공격" 목록. filter 는 개요 카드와 같은 조건(all · attacks · highrisk),
+    // sensors=false 면 P0f · Fatt · 경보 없는 Suricata 기록을 뺀다.
+    @GetMapping("/api/attacks/recent")
+    public List<Map<String, Object>> recentAttacks(
+            @RequestParam(required = false) String since,
+            @RequestParam(required = false) String filter,
+            @RequestParam(defaultValue = "false") boolean sensors,
+            @RequestParam(required = false) Integer size) {
+        return service.recentAttacks(since, filter, sensors, size);
+    }
+
     @GetMapping("/api/export/ml")
     public ResponseEntity<byte[]> exportMl(
             @RequestParam(required = false) String since,

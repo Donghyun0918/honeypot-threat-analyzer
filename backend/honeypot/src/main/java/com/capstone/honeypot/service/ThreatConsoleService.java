@@ -488,13 +488,15 @@ public class ThreatConsoleService {
     }
 
     // ── Export: ML / LLM as raw rows (controller formats CSV/JSON) ───────
+    // source_doc_id 는 llm-analysis-* 문서의 _id 와 같다. 이걸 내보내야
+    // 화면이 "이 사건에 이미 해설이 있는가" 를 키 계산 없이 바로 묻는다.
+    private static final List<String> ML_EXPORT_FIELDS = List.of(
+            "@timestamp", "source_doc_id", "src_ip", "dest_port", "honeypot",
+            "ml_label", "ml_is_attack", "ml_multi_conf",
+            "mitre_score", "mitre_technique", "model_used", "model_version");
+
     public List<Map<String, Object>> exportMl(String since) {
-        return rawExport("ml-analysis-*", since, 10000, List.of(
-                // source_doc_id 는 llm-analysis-* 문서의 _id 와 같다. 이걸 내보내야
-                // 화면이 "이 사건에 이미 해설이 있는가" 를 키 계산 없이 바로 묻는다.
-                "@timestamp", "source_doc_id", "src_ip", "dest_port", "honeypot",
-                "ml_label", "ml_is_attack", "ml_multi_conf",
-                "mitre_score", "mitre_technique", "model_used", "model_version"));
+        return rawExport("ml-analysis-*", since, 10000, ML_EXPORT_FIELDS);
     }
 
     public List<Map<String, Object>> exportLlm(String since) {
@@ -507,9 +509,50 @@ public class ThreatConsoleService {
                 "summary_ko", "solution_ko", "ttp_inferred"));
     }
 
-    @SuppressWarnings("unchecked")
+    // ── 대시보드 "최근 공격" 목록 ─────────────────────────────────────────
+    // 예전엔 화면이 내보내기(1만 행)를 받아 앞 100행만 쓰고, 필터도 그 100행 안에서 걸렀다.
+    // 그래서 카드는 "고위험 2,159" 인데 눌러 보면 0건이었다(10-22 AWS). 카드(overview)와 같은
+    // 창 · 같은 조건으로 ES 에서 바로 최근순으로 뽑는다.
+    static final Set<String> 목록필터값 = Set.of("all", "attacks", "highrisk");
+
+    static String 목록필터(String filter) {
+        return filter != null && 목록필터값.contains(filter) ? filter : "all";
+    }
+
+    // P0f · Fatt 는 연결마다 남는 지문 기록이고, 경보 없는 Suricata 행(Etc)은 흐름 기록이다.
+    // AWS 실측(10-22) 6.2만 행 중 94% — 섞어 두면 최근 100건이 20초 남짓의 정찰·기타로 채워져
+    // 무차별 대입·침입·악성코드가 목록에 한 번도 안 뜬다. 라벨은 그대로 두고 목록에서만 뺀다.
+    static final List<String> 센서허니팟 = List.of("P0f", "Fatt");
+
+    private Query 센서기록() {
+        return Query.of(q -> q.bool(b -> b
+                .should(s -> s.terms(t -> t.field("honeypot.keyword")
+                        .terms(v -> v.value(센서허니팟.stream().map(FieldValue::of).toList()))))
+                .should(s -> s.bool(sb -> sb
+                        .filter(f -> f.term(t -> t.field("honeypot.keyword").value("Suricata")))
+                        .filter(f -> f.term(t -> t.field("ml_label.keyword").value("Etc")))))
+                .minimumShouldMatch("1")));
+    }
+
+    public List<Map<String, Object>> recentAttacks(String since, String filter, boolean includeSensors, Integer size) {
+        List<Query> 조건 = new ArrayList<>();
+        조건.add(timeGteQuery(창(since, 창짧음)));
+        switch (목록필터(filter)) {
+            case "attacks"  -> 조건.add(termBoolQuery("ml_is_attack", true));
+            case "highrisk" -> 조건.add(gteNumberQuery("mitre_score", 70));
+            default -> { }
+        }
+        Query 기본 = boolFilter(조건.toArray(Query[]::new));
+        Query query = includeSensors ? 기본 : Query.of(q -> q.bool(b -> b.filter(기본).mustNot(센서기록())));
+        return rawSearch("ml-analysis-*", query, 크기(size, 100, 500), ML_EXPORT_FIELDS);
+    }
+
     private List<Map<String, Object>> rawExport(String index, String since, int size, List<String> sourceFields) {
-        String window = 창(since, 창김);
+        return rawSearch(index, timeGteQuery(창(since, 창김)), size, sourceFields);
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> rawSearch(String index, Query query, int size, List<String> sourceFields) {
         try {
             SearchResponse<Map> r = es.search(s -> s
                     .index(index)
@@ -517,7 +560,7 @@ public class ThreatConsoleService {
                     .trackTotalHits(t -> t.enabled(true))
                     .ignoreUnavailable(true)
                     .sort(so -> so.field(f -> f.field("@timestamp").order(SortOrder.Desc)))
-                    .query(timeGteQuery(window))
+                    .query(query)
                     .source(src -> src.filter(f -> f.includes(sourceFields))),
                     Map.class);
             List<Map<String, Object>> rows = new ArrayList<>();

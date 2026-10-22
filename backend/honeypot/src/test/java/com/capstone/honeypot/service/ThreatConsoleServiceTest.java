@@ -36,6 +36,27 @@ class ThreatConsoleServiceTest {
         assertEquals("now-1y", ThreatConsoleService.창("now-1y", "now-7d"));
     }
 
+    // ── 최근 공격 목록 필터 ──────────────────────────────────────────────
+
+    @Test
+    @DisplayName("목록 필터는 카드와 같은 세 값만 받는다")
+    void 목록필터_허용값() {
+        assertEquals("attacks", ThreatConsoleService.목록필터("attacks"));
+        assertEquals("highrisk", ThreatConsoleService.목록필터("highrisk"));
+        assertEquals("all", ThreatConsoleService.목록필터("all"));
+    }
+
+    @Test
+    @DisplayName("모르는 필터 · 빈 값은 전체로")
+    void 목록필터_기본값() {
+        assertEquals("all", ThreatConsoleService.목록필터(null));
+        assertEquals("all", ThreatConsoleService.목록필터(""));
+        assertEquals("all", ThreatConsoleService.목록필터("HIGHRISK"),
+                "대소문자를 섞어 보내면 조건 없이 전체가 나간다 — 화면이 보내는 값은 소문자뿐");
+        assertEquals("all", ThreatConsoleService.목록필터("llm"),
+                "LLM 목록은 llm-analysis-* 쪽이라 이 질의로 오지 않는다");
+    }
+
     // ── 크기 제한 ────────────────────────────────────────────────────────
 
     @Test
