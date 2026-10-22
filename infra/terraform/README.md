@@ -16,7 +16,7 @@ SSM 포트 포워딩(`terraform output tpot_web_tunnel`)으로 들어간다.
 
 허니팟 배치의 T-Pot 은 원본 24.04.1 을 설치한 뒤 `tpotce/compose/aws_overlay.yml` 로 우리 수정분을 얹는다
 (tpot.service drop-in 이 이 파일을 같이 쓴다): **threat-console**(`/threat-console/`), **한국어 Kibana** 저장 객체,
-**한국어 메인 페이지**, **어택맵 OSM 타일 패치**. 분류기 · 해설기는 대시보드 스택 쪽에서 한 번만 돈다.
+**한국어 메인 페이지**. 어택맵(map_web)은 원본 그대로 둔다 — 새 이미지는 map.js 를 SRI 로 불러와 예전 타일 패치를 얹으면 Disconnected 가 된다. 분류기 · 해설기는 대시보드 스택 쪽에서 한 번만 돈다.
 
 허니팟 배치에서 대시보드 스택은 `docker-compose.tpot.yml` 이 덧씌워진다(`.env` 의 `COMPOSE_FILE`).
 스택 안의 ES · Ollama · 어택맵은 띄우지 않고, 백엔드 · 분류기 · 해설기 · 프론트만 T-Pot 의

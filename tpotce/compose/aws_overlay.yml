@@ -22,10 +22,10 @@ services:
       - ${JSP_DIR}/tpotce/docker/nginx/dist/conf/tpotweb.conf:/etc/nginx/conf.d/tpotweb.conf:ro
       - ${JSP_DIR}/tpotce/docker/nginx/dist/html/index.html:/var/lib/nginx/html/index.html:ro
 
-  # CARTO 타일이 API 키를 요구해 워터마크가 찍히던 것을 OSM 타일로 바꾼 패치.
-  map_web:
-    volumes:
-      - ${JSP_DIR}/tpotce/docker/map-override/map.js:/opt/t-pot-attack-map/static/map.js:ro
+  # map_web 은 덮어쓰지 않는다. 지금 받는 map:24.04.1(Attack Map Server 4.0.0)은 CARTO 타일을
+  # 쓰지 않고, index.html 이 map.js 를 SRI(integrity 해시)로 불러온다. 예전 OSM 타일 패치
+  # (tpotce/docker/map-override/map.js)를 얹으면 해시가 안 맞아 브라우저가 map.js 를 실행하지
+  # 않고 → WebSocket 을 열지 않아 어택맵이 Disconnected 로 남는다.
 
   threat-console:
     container_name: threat-console
